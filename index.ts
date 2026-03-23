@@ -2146,17 +2146,38 @@ const memoryLanceDBProPlugin = {
     // Auto-recall: inject relevant memories before agent starts
     // Default is OFF to prevent the model from accidentally echoing injected context.
     if (config.autoRecall === true) {
+      // Cache the most recent raw user message per session so the
+      // before_prompt_build gating can check the *user* text, not the full
+      // assembled prompt (which includes system instructions and is too long
+      // for the short-message skip heuristic in shouldSkipRetrieval).
+      const lastRawUserMessage = new Map<string, string>();
+      api.on("message_received", (event: any, ctx: any) => {
+        // Both message_received and before_prompt_build have channelId in ctx,
+        // so use it as the shared cache key for raw user message gating.
+        const cacheKey = ctx?.channelId || ctx?.conversationId || "default";
+        const raw = typeof event.content === "string" ? event.content.trim() : "";
+        // Strip leading bot mentions (@BotName or <@id>) so gating sees the
+        // actual user intent, not the mention prefix.
+        const text = raw.replace(/^(?:@\S+\s*|<@!?\d+>\s*)+/, "").trim();
+        if (text) lastRawUserMessage.set(cacheKey, text);
+      });
+
       const AUTO_RECALL_TIMEOUT_MS = 3_000; // bounded timeout to prevent agent startup stall
       api.on("before_prompt_build", async (event: any, ctx: any) => {
+        // Manually increment turn counter for this session
+        const sessionId = ctx?.sessionId || "default";
+
+        // Use cached raw user message for gating (short-message skip, greeting
+        // detection, etc.).  Fall back to event.prompt if no cached message is
+        // available (e.g. first message or non-channel triggers).
+        const cacheKey = ctx?.channelId || sessionId;
+        const gatingText = lastRawUserMessage.get(cacheKey) || event.prompt || "";
         if (
           !event.prompt ||
-          shouldSkipRetrieval(event.prompt, config.autoRecallMinLength)
+          shouldSkipRetrieval(gatingText, config.autoRecallMinLength)
         ) {
           return;
         }
-
-        // Manually increment turn counter for this session
-        const sessionId = ctx?.sessionId || "default";
         const currentTurn = (turnCounter.get(sessionId) || 0) + 1;
         turnCounter.set(sessionId, currentTurn);
 
@@ -2376,20 +2397,22 @@ const memoryLanceDBProPlugin = {
           };
         };
 
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
         try {
           const result = await Promise.race([
-            recallWork(),
-            new Promise<undefined>((resolve) =>
-              setTimeout(() => {
+            recallWork().then((r) => { clearTimeout(timeoutId); return r; }),
+            new Promise<undefined>((resolve) => {
+              timeoutId = setTimeout(() => {
                 api.logger.warn(
                   `memory-lancedb-pro: auto-recall timed out after ${AUTO_RECALL_TIMEOUT_MS}ms; skipping memory injection to avoid stalling agent startup`,
                 );
                 resolve(undefined);
-              }, AUTO_RECALL_TIMEOUT_MS),
-            ),
+              }, AUTO_RECALL_TIMEOUT_MS);
+            }),
           ]);
           return result;
         } catch (err) {
+          clearTimeout(timeoutId);
           api.logger.warn(`memory-lancedb-pro: recall failed: ${String(err)}`);
         }
       }, { priority: 10 });
@@ -2636,7 +2659,7 @@ const memoryLanceDBProPlugin = {
               );
             }
 
-            if (existing.length > 0 && existing[0].score > 0.95) {
+            if (existing.length > 0 && existing[0].score > 0.90) {
               continue;
             }
 
