@@ -110,6 +110,14 @@ Observed caveat:
 - treat `hooks list --json` as a registry-surface check, not the only proof that plugin hooks are active
 - use `openclaw memory-pro doctor --json`, plugin startup logs, and a real `/new` or agent smoke run as the primary evidence for plugin-side hook wiring
 
+Observed 2026-03-27 caveat on OpenClaw `2026.3.14`:
+
+- one-shot CLI commands can hang even when `memory-lancedb-pro` itself is no longer holding the event loop open
+- this was reproduced with a temporary HOME that contained only a copied `openclaw.json`
+- the repro boundary narrowed to `plugins.allow`: when the allowlist only contained `memory-lancedb-pro`, `openclaw plugins info memory-lancedb-pro` exited normally; when the allowlist additionally contained bundled `telegram` or `discord`, the same command timed out
+- the same timeout pattern also affected `openclaw plugins list --json`, `openclaw memory-pro doctor --json`, and `openclaw memory-pro stats --json`
+- treat this as an OpenClaw CLI/runtime interaction boundary when validating live profiles on `2026.3.14`
+
 If you want plugin-only session summaries, also confirm:
 
 - built-in `session-memory` is disabled

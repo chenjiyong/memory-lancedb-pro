@@ -34,6 +34,10 @@
   - 当前 worktree 指向的临时 profile 上，`plugins info`、`memory-pro doctor --json`、`memory-pro stats --json` 都能在 20 秒内正常退出
 - 已修复：
   - `api.registerService(...start)` 中的后台 timer 改为 `unref()`，避免一次性 CLI 命令被插件保活
+- 已新增定位结论：
+  - 单独复制 live `openclaw.json` 到临时 HOME 即可复现 one-shot CLI 超时，说明复现不依赖 live `memory/`、`agents/`、`workspace/` 状态目录
+  - 当 `plugins.allow` 只保留 `memory-lancedb-pro` 时，`openclaw plugins info memory-lancedb-pro` 能正常退出
+  - 当 `plugins.allow` 额外包含 bundled `telegram` 或 `discord` 时，`openclaw plugins info memory-lancedb-pro`、`openclaw plugins list --json`、`openclaw memory-pro doctor --json`、`openclaw memory-pro stats --json` 都会超时
 - 仍未作为“通过”计入：
   - live profile `openclaw config validate` 已通过
   - live profile `openclaw plugins info memory-lancedb-pro`、`openclaw memory-pro doctor --json`、`openclaw memory-pro stats --json` 在打印插件启动日志后未在 20 秒内退出

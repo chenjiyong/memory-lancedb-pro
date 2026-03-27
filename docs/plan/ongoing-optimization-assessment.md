@@ -28,7 +28,10 @@
 - 当前剩余风险不是仓库内回归，而是 live OpenClaw profile 的命令级响应：
   - `openclaw config validate` 可正常返回
   - `openclaw plugins info memory-lancedb-pro`、`openclaw memory-pro doctor --json`、`openclaw memory-pro stats --json` 在打印插件启动日志后未在 20 秒内退出，因此不能计为 live 运维闭环已通过
-  - 根因已在当前 worktree 中定位并修复：插件 service `start()` 的 deferred timer / interval 会保活 CLI 事件循环；worktree 指向的临时 profile 已验证 `plugins info`、`doctor`、`stats` 可在 20 秒内正常退出
+  - 已确认的仓库侧修复仍然成立：插件 service `start()` 的 deferred timer / interval 保活问题已修复，`npm test` 与 `npm run test:openclaw-host` 均通过
+  - 2026-03-27 新增定位结果：单独复制 `~/.openclaw/openclaw.json` 到临时 HOME 即可复现卡住，不需要复制 `memory/`、`agents/`、`workspace/` 等状态目录
+  - 进一步减法验证显示：当 `plugins.allow` 只保留 `memory-lancedb-pro` 时，`openclaw plugins info memory-lancedb-pro` 可正常退出；当 `plugins.allow` 额外包含 bundled `telegram` 或 `discord` 时，同一命令会再次超时
+  - 因此当前未通过的 live CLI 问题，边界已收敛到 OpenClaw `2026.3.14` 下的多插件 allowlist / one-shot CLI 行为，而不是本仓库 memory 插件单独保活
 
 ### 已落地能力
 
