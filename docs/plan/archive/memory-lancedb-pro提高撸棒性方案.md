@@ -1,0 +1,374 @@
+
+# 最终开发方案
+
+## 一、总目标
+
+把 `memory-lancedb-pro` 做成一个 **面向长期使用的记忆插件**，满足四个硬目标：
+
+1. **Benchmark 总体正收益**
+   - `MemoryAgentBench`
+   - `LongMemEval`
+   - `LoCoMo`
+   - `Mem2ActBench`
+   - `MemBench`
+
+2. **真实使用场景连续性**
+   - 开发场景：新 session 能接住上个 session 的项目进度、决策、偏好、工具/技能/资源线索
+   - 学习场景：新 session 能接住学习主题、理解程度、解释偏好、待补知识点
+   - 搜资场景：新 session 能接住主题、来源、线索、待验证问题
+
+3. **安装/升级/停用后恢复**
+   - fresh install 能接管当前环境
+   - upgrade 不丢历史状态
+   - 闲置一段时间后恢复，能重新接住当前 workspace / agent / session 状态
+
+4. **最新版 OpenClaw 稳定兼容**
+   - 在 `2026.3.22` 和 `2026.3.23` 上稳定工作
+   - hooks、manifest、slot、load path、allowlist、bootstrap 都可验证
+
+---
+
+## 二、边界约束
+
+### 保持不变
+- 仍然是 **memory slot 插件**
+- 仍以 **LanceDB** 为主存储
+- 不引入强依赖外部服务
+- 不改变现有主工具名：
+  - `memory_recall`
+  - `memory_store`
+  - `memory_forget`
+  - `memory_update`
+
+### 不做
+- 不重做成 context-engine
+- 不再造第二套主存储系统
+- 不默认开启双写 session summary
+- 不为了某个 benchmark 单点极限优化而牺牲整体稳定性
+
+---
+
+## 三、总体架构
+
+最终架构分成 4 条主线：
+
+### 主线 A：兼容与环境接管
+解决“能不能稳定装上、升上、恢复起来”。
+
+### 主线 B：工作连续性
+解决“新 session 能不能接住上一个 session 的工作状态”。
+
+### 主线 C：场景化记忆
+解决“开发 / 学习 / 搜资三类用户是否召回不同信息”。
+
+### 主线 D：benchmark 驱动调优
+解决“功能增强后是否真的整体正收益”。
+
+---
+
+## 四、开发优先级
+
+## Phase 0：兼容与运行时接管底座
+**优先级最高**
+
+### 目标
+让插件在以下情况下都能自动识别并进入正确状态：
+- fresh install
+- existing user later install
+- plugin upgrade
+- idle resume
+- fresh agent bootstrap
+
+### 新增模块
+- `src/runtime-health.ts`
+- `src/runtime-rehydrate.ts`
+
+### 修改文件
+- `/Users/jige/work/memory-lancedb-pro/index.ts`
+- `/Users/jige/work/memory-lancedb-pro/cli.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/session-recovery.ts`
+
+### 功能
+1. 启动时做 runtime health 检查
+   - OpenClaw 版本
+   - plugin slot
+   - load path
+   - allowlist
+   - db path
+   - workspace mapping
+   - hook registry readiness
+
+2. 启动时判断当前状态
+   - fresh install
+   - upgrade pending
+   - migrate pending
+   - stale session artifacts present
+   - empty db but existing workspace memory artifacts present
+
+3. 生成恢复策略
+   - 只注入上下文
+   - 提示 upgrade/migrate
+   - 允许安全 rehydrate
+   - 阻止高风险自动导入
+
+### 验收标准
+- fresh profile 可通过 `openclaw config validate`
+- `openclaw plugins info memory-lancedb-pro` 正常
+- `openclaw memory-pro stats` 正常
+- 插件启动日志能明确给出当前状态分类
+
+---
+
+## Phase 1：工作连续性层
+**核心阶段**
+
+### 目标
+让新 session 拿到“继续工作所需状态”，而不是只拿到零散记忆。
+
+### 设计
+基于现有 `memoryReflection` / `sessionStrategy` 路径，新增 **continuity packet**。
+
+### 新增模块
+- `src/continuity-packet.ts`
+
+### 修改文件
+- `/Users/jige/work/memory-lancedb-pro/index.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/reflection-slices.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/reflection-store.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/reflection-ranking.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/smart-metadata.ts`
+
+### continuity packet 内容
+统一提取并注入 6 类切片：
+1. `current_focus`：当前项目/主题
+2. `recent_decisions`：最近确认的决策
+3. `open_loops`：未完成事项
+4. `preferred_tools`：偏好的工具/技能/命令方式
+5. `resource_refs`：最近在用的重要资源/文件/文档
+6. `next_resume`：下一次继续时应先做什么
+
+### 开发场景重点
+开发场景额外提取：
+- 当前模块/文件
+- 已完成 / 未完成
+- 失败点与规避方式
+- 偏好的 coding style / tool workflow
+- 常用 skills / Claude 工具模式
+
+### 验收标准
+- 新 session 首轮能拿到精简 continuity packet
+- packet 默认不超过固定 token/字符预算
+- 不把整段 reflection 原文塞进 prompt
+- continuity packet 可以被单独测试
+
+---
+
+## Phase 2：场景化记忆路由
+**提升真实场景效果**
+
+### 目标
+不同用户场景，召回不同内容。
+
+### 新增模块
+- `src/scenario-router.ts`
+
+### 修改文件
+- `/Users/jige/work/memory-lancedb-pro/src/intent-analyzer.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/adaptive-retrieval.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/retriever.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/tools.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/smart-metadata.ts`
+
+### 新增 metadata 维度
+不破坏现有主分类，只增补：
+- `activity_domain`: `dev | learning | research`
+- `artifact_kind`: `progress | preference | tool | skill | resource | open_loop`
+- `resume_priority`
+- `project_key`
+- `resource_refs`
+- `tool_refs`
+- `skill_refs`
+
+### 路由策略
+- `dev`：优先召回进度、决策、工具偏好、资源线索
+- `learning`：优先召回知识缺口、解释偏好、学习路径
+- `research`：优先召回来源、证据、待验证问题、主题聚类
+
+### 验收标准
+- 同样 query 在三类 domain 下 top results 分布不同
+- 开发场景新 session 的召回更偏“继续做事”
+- 学习/搜资场景不被开发型记忆污染
+
+---
+
+## Phase 3：记忆使用反馈闭环
+**让记忆不只“被注入”，还要“被用到”**
+
+### 目标
+把 recall 排名从“像不像”升级到“是否真的帮助了回答/行动”。
+
+### 新增模块
+- `src/usage-feedback.ts`
+
+### 修改文件
+- `/Users/jige/work/memory-lancedb-pro/index.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/access-tracker.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/retriever.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/smart-metadata.ts`
+
+### 功能
+1. 注入时记录 injected memory ids
+2. `agent_end` 后分析哪些 memory 真被使用
+3. 更新：
+   - `used_count`
+   - `last_used_at`
+   - `false_positive_recall_count`
+   - `resume_effective_count`
+
+### 作用
+- 提升后续 rerank
+- 降低误召回
+- 为 benchmark 中 action/continuity 类指标提供正反馈
+
+### 验收标准
+- “被注入但未帮助回答”的记忆会逐渐降权
+- “被注入且明显帮助回答/行动”的记忆会逐渐升权
+
+---
+
+## Phase 4：benchmark 驱动调优
+**把优化流程产品化**
+
+### 目标
+每次改动都要对 benchmark 和真实烟测负责。
+
+### 新增目录
+- `scripts/bench/`
+- `docs/benchmarks.md`
+
+### 功能
+建立统一评测入口：
+- `MemoryAgentBench`
+- `LongMemEval`
+- `LoCoMo`
+- `Mem2ActBench`
+- `MemBench`
+
+同时建立内部烟测矩阵：
+- fresh install
+- upgrade
+- idle resume
+- fresh agent bootstrap
+- dev continuity
+- learning continuity
+- research continuity
+- tool loop
+- scope isolation
+
+### 发布门槛
+每个候选版本必须满足：
+1. 五个 benchmark **总体正收益**
+2. 任一项不得明显回退
+3. host functional tests 全过
+4. install/upgrade/selfcheck 全过
+5. `2026.3.22` / `2026.3.23` 兼容测试全过
+
+---
+
+## 五、文件级实施清单
+
+## 新增文件
+- `/Users/jige/work/memory-lancedb-pro/src/runtime-health.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/runtime-rehydrate.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/continuity-packet.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/scenario-router.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/usage-feedback.ts`
+- `/Users/jige/work/memory-lancedb-pro/docs/benchmarks.md`
+
+## 重点修改文件
+- `/Users/jige/work/memory-lancedb-pro/index.ts`
+- `/Users/jige/work/memory-lancedb-pro/cli.ts`
+- `/Users/jige/work/memory-lancedb-pro/openclaw.plugin.json`
+- `/Users/jige/work/memory-lancedb-pro/src/retriever.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/smart-metadata.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/reflection-slices.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/reflection-store.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/reflection-ranking.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/session-recovery.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/access-tracker.ts`
+- `/Users/jige/work/memory-lancedb-pro/src/tools.ts`
+- `/Users/jige/work/memory-lancedb-pro/docs/openclaw-integration-playbook.md`
+
+## 重点测试文件
+- `/Users/jige/work/memory-lancedb-pro/test/openclaw-host-functional.mjs`
+- `/Users/jige/work/memory-lancedb-pro/test/plugin-manifest-regression.mjs`
+- 新增：
+  - `test/runtime-rehydrate.test.mjs`
+  - `test/continuity-packet.test.mjs`
+  - `test/scenario-router.test.mjs`
+  - `test/usage-feedback.test.mjs`
+  - `test/dev-continuity-flow.test.mjs`
+  - `test/learning-continuity-flow.test.mjs`
+  - `test/research-continuity-flow.test.mjs`
+
+---
+
+## 六、配置策略
+
+### 默认策略
+默认应保持保守：
+- `autoCapture: true`
+- `autoRecall: false` 或低侵入
+- `sessionStrategy: none` 或受控启用
+- continuity packet 默认开启，但预算严格限制
+- 不默认双写 session summary
+
+### 新增配置项
+建议加入：
+- `continuity.enabled`
+- `continuity.maxItems`
+- `continuity.maxChars`
+- `continuity.resumePriorityThreshold`
+- `scenarioRouting.enabled`
+- `rehydration.enabled`
+- `rehydration.importWorkspaceArtifacts`
+- `usageFeedback.enabled`
+
+---
+
+## 七、最终验收标准
+
+项目完成后，必须同时满足：
+
+### 功能
+- 新 session 能延续上个 session 的工作状态
+- 开发 / 学习 / 搜资三类场景有差异化召回
+- 安装 / 升级 / 恢复均有明确状态接管流程
+
+### 稳定性
+- `OpenClaw 2026.3.22` 可用
+- `OpenClaw 2026.3.23` 可用
+- fresh agent bootstrap 不误判为 memory 故障
+- hook 注册、manifest、slot 全部稳定
+
+### 评测
+- 五组 benchmark 整体正收益
+- 不以单项大回退换整体小提升
+
+---
+
+## 八、最终开发顺序
+
+按后续开发顺序，建议固定为：
+
+1. **Phase 0：兼容与接管底座**
+2. **Phase 1：continuity packet**
+3. **Phase 2：场景化路由**
+4. **Phase 3：使用反馈闭环**
+5. **Phase 4：benchmark 与发布门槛**
+
+---
+
+## 最终版本一句话
+
+**最终开发方向是：以“环境接管 + 工作连续性 + 场景化召回 + benchmark 门槛”作为主线，在现有 memory-slot 架构内完成增强，而不是扩大系统形态。**

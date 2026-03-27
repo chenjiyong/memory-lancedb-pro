@@ -29,6 +29,7 @@ import {
   isUserMdExclusiveMemory,
   type WorkspaceBoundaryConfig,
 } from "./workspace-boundary.js";
+import { buildConfirmedUsePatch } from "./usage-feedback.js";
 
 // ============================================================================
 // Types
@@ -589,11 +590,8 @@ export function registerMemoryRecallTool(
               return runtimeContext.store.patchMetadata(
                 result.entry.id,
                 {
-                  access_count: meta.access_count + 1,
+                  ...buildConfirmedUsePatch(meta, { usedAt: now, accessDelta: 1 }),
                   last_accessed_at: now,
-                  last_confirmed_use_at: now,
-                  bad_recall_count: 0,
-                  suppressed_until_turn: 0,
                 },
                 scopeFilter,
               );

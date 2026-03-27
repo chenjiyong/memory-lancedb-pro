@@ -83,6 +83,7 @@ function makePluginConfig(workDir) {
 
 async function seedReflection(dbPath, agentId) {
   const store = new MemoryStore({ dbPath, vectorDim: EMBEDDING_DIMENSIONS });
+  const runAt = Date.now() - 60_000;
   await storeReflectionToLanceDB({
     reflectionText: [
       "## Invariants",
@@ -96,7 +97,7 @@ async function seedReflection(dbPath, agentId) {
     command: "command:new",
     scope: "global",
     toolErrorSignals: [],
-    runAt: Date.UTC(2026, 2, 12, 15, 0, 0),
+    runAt,
     usedFallback: false,
     embedPassage: async () => FIXED_VECTOR,
     vectorSearch: async () => [],

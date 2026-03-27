@@ -57,6 +57,7 @@ async function createSourceDb(sourceDbPath) {
 async function runCliSmoke() {
   const workDir = mkdtempSync(path.join(tmpdir(), "memory-lancedb-pro-smoke-"));
   const sourceDbPath = path.join(workDir, "source-db");
+  const configPath = path.join(workDir, "openclaw.json");
 
   await createSourceDb(sourceDbPath);
 
@@ -80,7 +81,33 @@ async function runCliSmoke() {
     embedder: {
       embedPassage: async () => [0, 0, 0, 0],
     },
+    pluginId: "memory-lancedb-pro",
+    pluginConfig: {
+      dbPath: path.join(workDir, "target-db"),
+    },
   };
+
+  writeFileSync(configPath, JSON.stringify({
+    version: "2026.3.23",
+    plugins: {
+      allow: ["memory-lancedb-pro"],
+      load: { paths: [process.cwd()] },
+      slots: { memory: "memory-lancedb-pro" },
+      entries: {
+        "memory-lancedb-pro": {
+          enabled: true,
+          config: {
+            dbPath: path.join(workDir, "target-db"),
+          },
+        },
+      },
+    },
+    agents: {
+      defaults: {
+        workspace: path.join(workDir, "workspace"),
+      },
+    },
+  }, null, 2));
 
   createMemoryCLI(context)({ program });
 
@@ -140,6 +167,18 @@ async function runCliSmoke() {
     }
     return logs.join("\n");
   };
+
+  const doctorOutput = await captureLogs([
+    "node",
+    "openclaw",
+    "memory-pro",
+    "doctor",
+    "--config",
+    configPath,
+    "--json",
+  ]);
+  assert.match(doctorOutput, /"health"/);
+  assert.match(doctorOutput, /"rehydrate"/);
 
   const out1 = await captureLogs([
     "node",

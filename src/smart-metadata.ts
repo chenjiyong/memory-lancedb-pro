@@ -60,6 +60,13 @@ export interface SmartMemoryMetadata {
   bad_recall_count: number;
   suppressed_until_turn: number;
   canonical_id?: string;
+  activity_domain?: "dev" | "learning" | "research";
+  artifact_kind?: "progress" | "preference" | "tool" | "skill" | "resource" | "open_loop" | "decision";
+  resume_priority?: number;
+  project_key?: string;
+  resource_refs?: string[];
+  tool_refs?: string[];
+  skill_refs?: string[];
   [key: string]: unknown;
 }
 
@@ -187,6 +194,42 @@ function normalizeOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+function normalizeOptionalStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const normalized = [...new Set(
+    value
+      .map((item) => normalizeOptionalString(item))
+      .filter((item): item is string => Boolean(item))
+  )];
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeActivityDomain(value: unknown): SmartMemoryMetadata["activity_domain"] {
+  switch (value) {
+    case "dev":
+    case "learning":
+    case "research":
+      return value;
+    default:
+      return undefined;
+  }
+}
+
+function normalizeArtifactKind(value: unknown): SmartMemoryMetadata["artifact_kind"] {
+  switch (value) {
+    case "progress":
+    case "preference":
+    case "tool":
+    case "skill":
+    case "resource":
+    case "open_loop":
+    case "decision":
+      return value;
+    default:
+      return undefined;
+  }
+}
+
 function normalizeTimestamp(value: unknown, fallback: number): number {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n) || n <= 0) return fallback;
@@ -311,6 +354,13 @@ export function parseSmartMetadata(
     bad_recall_count: clampCount(parsed.bad_recall_count, 0),
     suppressed_until_turn: clampCount(parsed.suppressed_until_turn, 0),
     canonical_id: normalizeOptionalString(parsed.canonical_id),
+    activity_domain: normalizeActivityDomain(parsed.activity_domain),
+    artifact_kind: normalizeArtifactKind(parsed.artifact_kind),
+    resume_priority: clamp01(parsed.resume_priority, 0.5),
+    project_key: normalizeOptionalString(parsed.project_key),
+    resource_refs: normalizeOptionalStringArray(parsed.resource_refs),
+    tool_refs: normalizeOptionalStringArray(parsed.tool_refs),
+    skill_refs: normalizeOptionalStringArray(parsed.skill_refs),
   };
 
   return normalized;
@@ -393,6 +443,34 @@ export function buildSmartMetadata(
       patch.canonical_id === undefined
         ? base.canonical_id
         : normalizeOptionalString(patch.canonical_id),
+    activity_domain:
+      patch.activity_domain === undefined
+        ? base.activity_domain
+        : normalizeActivityDomain(patch.activity_domain),
+    artifact_kind:
+      patch.artifact_kind === undefined
+        ? base.artifact_kind
+        : normalizeArtifactKind(patch.artifact_kind),
+    resume_priority:
+      patch.resume_priority === undefined
+        ? base.resume_priority
+        : clamp01(patch.resume_priority, base.resume_priority ?? 0.5),
+    project_key:
+      patch.project_key === undefined
+        ? base.project_key
+        : normalizeOptionalString(patch.project_key),
+    resource_refs:
+      patch.resource_refs === undefined
+        ? base.resource_refs
+        : normalizeOptionalStringArray(patch.resource_refs),
+    tool_refs:
+      patch.tool_refs === undefined
+        ? base.tool_refs
+        : normalizeOptionalStringArray(patch.tool_refs),
+    skill_refs:
+      patch.skill_refs === undefined
+        ? base.skill_refs
+        : normalizeOptionalStringArray(patch.skill_refs),
   };
 }
 

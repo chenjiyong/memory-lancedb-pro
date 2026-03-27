@@ -24,6 +24,9 @@ import {
   normalizeOAuthProviderId,
   performOAuthLogin,
 } from "./src/llm-oauth.js";
+import { buildRuntimeHealthReport } from "./src/runtime-health.js";
+import { classifyRehydrateDecision } from "./src/runtime-rehydrate.js";
+import { parseSmartMetadata } from "./src/smart-metadata.js";
 
 // ============================================================================
 // Types
@@ -784,6 +787,76 @@ export function registerMemoryCLI(program: Command, context: CLIContext): void {
         }
       } catch (error) {
         console.error("Failed to get statistics:", error);
+        process.exit(1);
+      }
+    });
+
+  memory
+    .command("doctor")
+    .description("Inspect runtime health, startup wiring, and rehydrate status")
+    .option("--config <path>", "OpenClaw config file to inspect")
+    .option("--json", "Output as JSON")
+    .action(async (options) => {
+      try {
+        const pluginId = context.pluginId || "memory-lancedb-pro";
+        const configPath = resolveOpenClawConfigPath(options.config);
+        const openclawConfig = await loadOpenClawConfig(configPath);
+        const pluginConfig = ensurePluginConfigRoot(openclawConfig, pluginId);
+        const pluginsRoot = (openclawConfig.plugins || {}) as Record<string, any>;
+        const agentsRoot = (openclawConfig.agents || {}) as Record<string, any>;
+        const defaultsRoot = (agentsRoot.defaults || {}) as Record<string, any>;
+        const loadRoot = (pluginsRoot.load || {}) as Record<string, any>;
+        const slotsRoot = (pluginsRoot.slots || {}) as Record<string, any>;
+        const workspaceDir = typeof defaultsRoot.workspace === "string" && defaultsRoot.workspace.trim()
+          ? defaultsRoot.workspace.trim()
+          : path.join(resolveOpenClawHome(), "workspace");
+        const report = buildRuntimeHealthReport({
+          pluginId,
+          pluginRoot: process.cwd(),
+          dbPath: typeof pluginConfig.dbPath === "string" ? pluginConfig.dbPath : context.pluginConfig?.dbPath as string | undefined,
+          workspaceDir,
+          openclawVersion: typeof openclawConfig.version === "string" ? openclawConfig.version : process.env.OPENCLAW_VERSION,
+          pluginSlot: typeof slotsRoot.memory === "string" ? slotsRoot.memory : undefined,
+          allowlist: Array.isArray(pluginsRoot.allow) ? pluginsRoot.allow : undefined,
+          loadPaths: Array.isArray(loadRoot.paths) ? loadRoot.paths : undefined,
+          requiredHooks: [],
+          registeredHooks: [],
+        });
+
+        const stats = await context.store.stats();
+        const recentEntries = await context.store.list(undefined, undefined, 120, 0);
+        const hasLegacyArtifacts = recentEntries.some((entry) => parseSmartMetadata(entry.metadata, entry).source === "legacy");
+        const decision = classifyRehydrateDecision({
+          health: report,
+          memoryCount: stats.totalCount,
+          reflectionArtifactCount: stats.categoryCounts.reflection || 0,
+          workspaceArtifactCount: 0,
+          hasLegacyArtifacts,
+        });
+
+        const summary = {
+          health: report,
+          rehydrate: decision,
+          memory: {
+            totalCount: stats.totalCount,
+            reflectionCount: stats.categoryCounts.reflection || 0,
+            hasLegacyArtifacts,
+          },
+          configPath,
+        };
+
+        if (options.json) {
+          console.log(formatJson(summary));
+        } else {
+          console.log(`Runtime health: ${report.mode} (${report.status})`);
+          console.log(`Rehydrate: ${decision.kind}`);
+          console.log(`Config file: ${configPath}`);
+          report.checks.forEach((check) => {
+            console.log(`• ${check.key}: ${check.status} - ${check.summary}`);
+          });
+        }
+      } catch (error) {
+        console.error("Doctor check failed:", error);
         process.exit(1);
       }
     });
