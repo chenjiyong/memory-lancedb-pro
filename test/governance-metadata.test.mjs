@@ -69,4 +69,27 @@ describe("governance metadata compatibility", () => {
     assert.equal(patched.bad_recall_count, 0);
     assert.equal(patched.last_confirmed_use_at, 1710000001234);
   });
+
+  it("normalizes continuity and routing metadata fields", () => {
+    const patched = buildSmartMetadata({
+      text: "Keep benchmark notes handy",
+      category: "fact",
+      timestamp: 1710000000000,
+    }, {
+      activity_domain: "dev",
+      artifact_kind: "resource",
+      resume_priority: 1.2,
+      project_key: "mempro",
+      resource_refs: ["docs/plan/final-development-plan.md", "", "docs/plan/final-development-plan.md"],
+      tool_refs: ["rg", "node --test"],
+      skill_refs: ["systematic-debugging"],
+    });
+
+    assert.equal(patched.activity_domain, "dev");
+    assert.equal(patched.artifact_kind, "resource");
+    assert.equal(patched.resume_priority, 1);
+    assert.deepEqual(patched.resource_refs, ["docs/plan/final-development-plan.md"]);
+    assert.deepEqual(patched.tool_refs, ["rg", "node --test"]);
+    assert.deepEqual(patched.skill_refs, ["systematic-debugging"]);
+  });
 });

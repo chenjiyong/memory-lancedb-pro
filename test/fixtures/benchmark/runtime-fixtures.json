@@ -1,0 +1,52 @@
+{
+  "cases": [
+    {
+      "name": "dev-progress-priority",
+      "query": "继续开发 continuity packet 和 runtime health 模块",
+      "expectedDomain": "dev",
+      "expectedTopArtifactKind": "progress",
+      "results": [
+        {
+          "id": "pref-1",
+          "score": 0.91,
+          "text": "Prefer concise diffs in code review.",
+          "metadata": {
+            "artifact_kind": "preference"
+          }
+        },
+        {
+          "id": "progress-1",
+          "score": 0.83,
+          "text": "Continue wiring runtime health and continuity packet.",
+          "metadata": {
+            "artifact_kind": "progress"
+          }
+        }
+      ]
+    },
+    {
+      "name": "research-resource-priority",
+      "query": "整理这个方案的资料来源和 benchmark 证据",
+      "expectedDomain": "research",
+      "expectedTopArtifactKind": "resource",
+      "results": [
+        {
+          "id": "decision-1",
+          "score": 0.74,
+          "text": "Keep the memory slot architecture stable.",
+          "metadata": {
+            "artifact_kind": "decision"
+          }
+        },
+        {
+          "id": "resource-1",
+          "score": 0.82,
+          "text": "docs/plan/openclaw-memory-comparison-objective.md",
+          "metadata": {
+            "artifact_kind": "resource"
+          }
+        }
+      ]
+    }
+  ]
+}
