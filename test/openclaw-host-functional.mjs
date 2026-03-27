@@ -255,6 +255,21 @@ async function main() {
     assert.match(infoOutput, /Status:\s+loaded/);
     assert.match(infoOutput, /CLI commands:\s+memory-pro/);
 
+    const doctorOutput = parseJsonOutput(await runOpenClaw(profile, ["memory-pro", "doctor", "--json"]));
+    assert.equal(doctorOutput.health.pluginId, "memory-lancedb-pro");
+    assert.ok(Array.isArray(doctorOutput.health.checks));
+    const hookRegistryCheck = doctorOutput.health.checks.find((check) => check.key === "hookRegistry");
+    assert.ok(hookRegistryCheck);
+    assert.notEqual(hookRegistryCheck.summary, "No required hooks declared.");
+
+    const hooksOutput = parseJsonOutput(await runOpenClaw(profile, ["hooks", "list", "--json"]));
+    assert.ok(Array.isArray(hooksOutput.hooks));
+    assert.ok(hooksOutput.hooks.length >= 1);
+    assert.ok(
+      hooksOutput.hooks.some((hook) => Array.isArray(hook.events) && hook.events.includes("command:new")),
+      "hook registry should expose at least one command:new-capable hook",
+    );
+
     const versionOutput = stripPluginLogs(await runOpenClaw(profile, ["memory-pro", "version"]));
     assert.equal(versionOutput, packageJson.version);
 

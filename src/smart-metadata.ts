@@ -57,8 +57,12 @@ export interface SmartMemoryMetadata {
   injected_count: number;
   last_injected_at?: number;
   last_confirmed_use_at?: number;
+  used_count?: number;
+  last_used_at?: number;
   bad_recall_count: number;
+  false_positive_recall_count?: number;
   suppressed_until_turn: number;
+  resume_effective_count?: number;
   canonical_id?: string;
   activity_domain?: "dev" | "learning" | "research";
   artifact_kind?: "progress" | "preference" | "tool" | "skill" | "resource" | "open_loop" | "decision";
@@ -351,8 +355,12 @@ export function parseSmartMetadata(
     injected_count: clampCount(parsed.injected_count, 0),
     last_injected_at: normalizeOptionalTimestamp(parsed.last_injected_at),
     last_confirmed_use_at: normalizeOptionalTimestamp(parsed.last_confirmed_use_at),
+    used_count: clampCount(parsed.used_count, 0),
+    last_used_at: normalizeOptionalTimestamp(parsed.last_used_at),
     bad_recall_count: clampCount(parsed.bad_recall_count, 0),
+    false_positive_recall_count: clampCount(parsed.false_positive_recall_count, 0),
     suppressed_until_turn: clampCount(parsed.suppressed_until_turn, 0),
+    resume_effective_count: clampCount(parsed.resume_effective_count, 0),
     canonical_id: normalizeOptionalString(parsed.canonical_id),
     activity_domain: normalizeActivityDomain(parsed.activity_domain),
     artifact_kind: normalizeArtifactKind(parsed.artifact_kind),
@@ -434,10 +442,23 @@ export function buildSmartMetadata(
       patch.last_confirmed_use_at === undefined
         ? base.last_confirmed_use_at
         : normalizeOptionalTimestamp(patch.last_confirmed_use_at),
+    used_count: clampCount(patch.used_count, base.used_count ?? 0),
+    last_used_at:
+      patch.last_used_at === undefined
+        ? base.last_used_at
+        : normalizeOptionalTimestamp(patch.last_used_at),
     bad_recall_count: clampCount(patch.bad_recall_count, base.bad_recall_count),
+    false_positive_recall_count: clampCount(
+      patch.false_positive_recall_count,
+      base.false_positive_recall_count ?? 0,
+    ),
     suppressed_until_turn: clampCount(
       patch.suppressed_until_turn,
       base.suppressed_until_turn,
+    ),
+    resume_effective_count: clampCount(
+      patch.resume_effective_count,
+      base.resume_effective_count ?? 0,
     ),
     canonical_id:
       patch.canonical_id === undefined

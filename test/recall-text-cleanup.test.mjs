@@ -461,6 +461,59 @@ describe("recall text cleanup", () => {
     assert.ok(injectedLines.length <= 2, "injected lines should respect autoRecallMaxItems");
   });
 
+  it("keeps continuity ahead of recall while capping the combined injected context", async () => {
+    MemoryRetriever.prototype.retrieve = async () => makeManyResults(4);
+    const { MemoryStore } = jiti("../src/store.ts");
+    const store = new MemoryStore({
+      dbPath: path.join(workspaceDir, "db"),
+      vectorDim: 4,
+    });
+    await store.store({
+      id: "continuity-1",
+      text: "Current task: finish runtime inspection alignment and keep the continuity packet ahead of generic recall. Next: trim memory injection when continuity already consumed most of the context budget.",
+      category: "decision",
+      scope: "global",
+      importance: 0.95,
+      timestamp: Date.now(),
+      vector: [0, 0, 0, 0],
+      metadata: JSON.stringify({
+        l0_abstract: "Finish runtime inspection alignment before widening recall",
+        artifact_kind: "progress",
+        activity_domain: "dev",
+        resource_refs: ["src/runtime-inspection.ts", "index.ts"],
+        resume_priority: 0.98,
+      }),
+    });
+
+    const harness = createPluginApiHarness({
+      resolveRoot: workspaceDir,
+      pluginConfig: {
+        dbPath: path.join(workspaceDir, "db"),
+        embedding: { apiKey: "test-api-key" },
+        smartExtraction: false,
+        autoCapture: false,
+        autoRecall: true,
+        autoRecallMinLength: 1,
+        autoRecallMaxItems: 3,
+        autoRecallMaxChars: 220,
+        autoRecallPerItemMaxChars: 120,
+        selfImprovement: { enabled: false, beforeResetNote: false, ensureLearningFiles: false },
+      },
+    });
+
+    memoryLanceDBProPlugin.register(harness.api);
+    const hooks = harness.eventHandlers.get("before_prompt_build") || [];
+    const [{ handler: autoRecallHook }] = hooks;
+    const output = await autoRecallHook(
+      { prompt: "继续这个任务，把记忆上下文拼出来。" },
+      { sessionId: "auto-continuity-budget", sessionKey: "agent:main:session:auto-continuity-budget", agentId: "main" }
+    );
+
+    assert.ok(output);
+    assert.ok(output.prependContext.indexOf("<continuity-packet>") < output.prependContext.indexOf("<relevant-memories>"));
+    assert.ok(output.prependContext.length <= 420, `combined context should stay bounded, got ${output.prependContext.length}`);
+  });
+
   it("auto-recall only injects confirmed non-archived memories", async () => {
     MemoryRetriever.prototype.retrieve = async () => makeGovernanceFilteredResults();
 

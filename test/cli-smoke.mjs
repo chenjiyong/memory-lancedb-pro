@@ -179,6 +179,11 @@ async function runCliSmoke() {
   ]);
   assert.match(doctorOutput, /"health"/);
   assert.match(doctorOutput, /"rehydrate"/);
+  const doctorJson = JSON.parse(doctorOutput);
+  const hookRegistryCheck = doctorJson.health.checks.find((check) => check.key === "hookRegistry");
+  assert.ok(hookRegistryCheck, "doctor output should include hookRegistry health");
+  assert.notEqual(hookRegistryCheck.summary, "No required hooks declared.");
+  assert.match(hookRegistryCheck.summary, /command:new|before_prompt_build|agent_end/);
 
   const out1 = await captureLogs([
     "node",

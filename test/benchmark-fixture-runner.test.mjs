@@ -19,3 +19,17 @@ test("benchmark fixture runner reports passing local fixtures", async () => {
   assert.equal(parsed.failed, 0);
   assert.equal(parsed.passed, parsed.total);
 });
+
+test("bench wrapper delegates to the fixture runner", async () => {
+  const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+  const fixturePath = path.join(repoRoot, "test", "fixtures", "benchmark", "runtime-fixtures.json");
+  const scriptPath = path.join(repoRoot, "scripts", "bench", "run-fixture-bench.mjs");
+
+  const { stdout } = await execFileAsync("node", [scriptPath, fixturePath], {
+    cwd: repoRoot,
+  });
+
+  const parsed = JSON.parse(stdout);
+  assert.equal(parsed.failed, 0);
+  assert.equal(parsed.passed, parsed.total);
+});

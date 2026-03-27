@@ -46,4 +46,41 @@ describe("scenario router", () => {
 
     assert.equal(JSON.parse(results[0].entry.metadata).artifact_kind, "progress");
   });
+
+  it("uses continuity context to classify ambiguous follow-up queries", () => {
+    const devSignal = detectScenario("继续这个", {
+      continuityText: "current-focus\n1. Files: src/runtime-inspection.ts, cli.ts, index.ts\npreferred-tools\n1. rg\n2. node --test",
+    });
+    const learningSignal = detectScenario("继续这个", {
+      continuityText: "current-focus\n1. 学习向量检索与 BM25\nopen-loops\n1. Need to explain the difference between lexical and semantic recall",
+    });
+
+    assert.equal(devSignal.domain, "dev");
+    assert.equal(learningSignal.domain, "learning");
+  });
+
+  it("adds a domain match boost without hard-filtering non-matching results", () => {
+    const signal = detectScenario("继续这个", {
+      continuityText: "Files: src/runtime-inspection.ts, cli.ts, index.ts",
+    });
+    const results = applyScenarioBoost([
+      {
+        entry: {
+          category: "fact",
+          metadata: JSON.stringify({ activity_domain: "learning", artifact_kind: "progress" }),
+        },
+        score: 0.88,
+      },
+      {
+        entry: {
+          category: "fact",
+          metadata: JSON.stringify({ activity_domain: "dev", artifact_kind: "progress" }),
+        },
+        score: 0.83,
+      },
+    ], signal);
+
+    assert.equal(JSON.parse(results[0].entry.metadata).activity_domain, "dev");
+    assert.ok(results[1].score > 0);
+  });
 });

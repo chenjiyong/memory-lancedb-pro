@@ -24,8 +24,11 @@ import {
   normalizeOAuthProviderId,
   performOAuthLogin,
 } from "./src/llm-oauth.js";
-import { buildRuntimeHealthReport } from "./src/runtime-health.js";
-import { classifyRehydrateDecision } from "./src/runtime-rehydrate.js";
+import {
+  buildRuntimeInspectionReport,
+  countWorkspaceArtifacts,
+  inferExpectedRuntimeHooks,
+} from "./src/runtime-inspection.js";
 import { parseSmartMetadata } from "./src/smart-metadata.js";
 
 // ============================================================================
@@ -810,7 +813,10 @@ export function registerMemoryCLI(program: Command, context: CLIContext): void {
         const workspaceDir = typeof defaultsRoot.workspace === "string" && defaultsRoot.workspace.trim()
           ? defaultsRoot.workspace.trim()
           : path.join(resolveOpenClawHome(), "workspace");
-        const report = buildRuntimeHealthReport({
+        const stats = await context.store.stats();
+        const recentEntries = await context.store.list(undefined, undefined, 120, 0);
+        const hasLegacyArtifacts = recentEntries.some((entry) => parseSmartMetadata(entry.metadata, entry).source === "legacy");
+        const inspection = buildRuntimeInspectionReport({
           pluginId,
           pluginRoot: process.cwd(),
           dbPath: typeof pluginConfig.dbPath === "string" ? pluginConfig.dbPath : context.pluginConfig?.dbPath as string | undefined,
@@ -819,39 +825,32 @@ export function registerMemoryCLI(program: Command, context: CLIContext): void {
           pluginSlot: typeof slotsRoot.memory === "string" ? slotsRoot.memory : undefined,
           allowlist: Array.isArray(pluginsRoot.allow) ? pluginsRoot.allow : undefined,
           loadPaths: Array.isArray(loadRoot.paths) ? loadRoot.paths : undefined,
-          requiredHooks: [],
-          registeredHooks: [],
-        });
-
-        const stats = await context.store.stats();
-        const recentEntries = await context.store.list(undefined, undefined, 120, 0);
-        const hasLegacyArtifacts = recentEntries.some((entry) => parseSmartMetadata(entry.metadata, entry).source === "legacy");
-        const decision = classifyRehydrateDecision({
-          health: report,
+          requiredHooks: inferExpectedRuntimeHooks(pluginConfig as Record<string, any>),
           memoryCount: stats.totalCount,
           reflectionArtifactCount: stats.categoryCounts.reflection || 0,
-          workspaceArtifactCount: 0,
+          workspaceArtifactCount: await countWorkspaceArtifacts(workspaceDir),
           hasLegacyArtifacts,
         });
 
         const summary = {
-          health: report,
-          rehydrate: decision,
+          health: inspection.health,
+          rehydrate: inspection.rehydrate,
           memory: {
             totalCount: stats.totalCount,
             reflectionCount: stats.categoryCounts.reflection || 0,
             hasLegacyArtifacts,
           },
+          observed: inspection.observed,
           configPath,
         };
 
         if (options.json) {
           console.log(formatJson(summary));
         } else {
-          console.log(`Runtime health: ${report.mode} (${report.status})`);
-          console.log(`Rehydrate: ${decision.kind}`);
+          console.log(`Runtime health: ${inspection.health.mode} (${inspection.health.status})`);
+          console.log(`Rehydrate: ${inspection.rehydrate.kind} / ${inspection.rehydrate.state}`);
           console.log(`Config file: ${configPath}`);
-          report.checks.forEach((check) => {
+          inspection.health.checks.forEach((check) => {
             console.log(`• ${check.key}: ${check.status} - ${check.summary}`);
           });
         }

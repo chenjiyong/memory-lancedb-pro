@@ -48,3 +48,5 @@
 
 - `docs/plan/openclaw-memory-comparison-objective.md` remains the fact baseline outside this worktree plan.
 - The original draft files were not present inside this git worktree, so this branch adds the canonical plan file rather than moving absent local-only drafts.
+- Follow-on optimization assessment: `docs/plan/ongoing-optimization-assessment.md`.
+- Follow-on implementation roadmap: `docs/plan/ongoing-optimization-implementation-plan.md`.

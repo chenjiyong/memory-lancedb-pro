@@ -50,6 +50,89 @@ function extractResourceRefs(text: string): string[] {
   return uniqueLines(matches.map((match) => match.replace(/^`|`$/g, "")));
 }
 
+function extractNextResumeHints(text: string): string[] {
+  const hints: string[] = [];
+  const patterns = [
+    /\bNext:\s*([^.!?\n]+)/gi,
+    /\bNext step:\s*([^.!?\n]+)/gi,
+    /下一步[:：]?\s*([^。！？\n]+)/g,
+  ];
+  for (const pattern of patterns) {
+    for (const match of text.matchAll(pattern)) {
+      if (match[1]) hints.push(match[1]);
+    }
+  }
+  return uniqueLines(hints);
+}
+
+function extractLabeledHints(text: string, patterns: RegExp[]): string[] {
+  const hints: string[] = [];
+  for (const pattern of patterns) {
+    for (const match of text.matchAll(pattern)) {
+      const value = match[1] ?? match[0];
+      if (value) hints.push(value);
+    }
+  }
+  return uniqueLines(hints);
+}
+
+function extractOpenLoopHints(text: string): string[] {
+  const hints: string[] = [];
+  const patterns = [
+    /\bBlocked[^.!?\n]*/gi,
+    /\bAvoid[^.!?\n]*/gi,
+    /\bTODO[:\s][^.!?\n]*/gi,
+    /\bNeed to[^.!?\n]*/gi,
+    /阻塞[^。！？\n]*/g,
+    /待处理[^。！？\n]*/g,
+  ];
+  for (const pattern of patterns) {
+    for (const match of text.matchAll(pattern)) {
+      if (match[0]) hints.push(match[0]);
+    }
+  }
+  return uniqueLines(hints);
+}
+
+function extractLearningGapHints(text: string): string[] {
+  return extractLabeledHints(text, [
+    /\bKnowledge gap:\s*([^.!?\n]+)/gi,
+    /\bNeed to understand\s*([^.!?\n]+)/gi,
+    /知识缺口[:：]?\s*([^。！？\n]+)/g,
+  ]);
+}
+
+function extractLearningPreferenceHints(text: string): string[] {
+  return extractLabeledHints(text, [
+    /\bExplanation preference:\s*([^.!?\n]+)/gi,
+    /(?:^|[.。\n])\s*Prefer\s*([^.!?\n]+)/gi,
+    /偏好[:：]?\s*([^。！？\n]+)/g,
+  ]);
+}
+
+function extractResearchQuestionHints(text: string): string[] {
+  return extractLabeledHints(text, [
+    /\bOpen question:\s*([^.!?\n]+)/gi,
+    /\bResearch question:\s*([^.!?\n]+)/gi,
+    /开放问题[:：]?\s*([^。！？\n]+)/g,
+    /研究问题[:：]?\s*([^。！？\n]+)/g,
+  ]);
+}
+
+function extractResearchEvidenceHints(text: string): string[] {
+  return extractLabeledHints(text, [
+    /\bEvidence:\s*([^.!?\n]+)/gi,
+    /证据[:：]?\s*([^。！？\n]+)/g,
+  ]);
+}
+
+function extractSourceHints(text: string): string[] {
+  return extractLabeledHints(text, [
+    /\bSources?:\s*([^.!?\n]+)/gi,
+    /来源[:：]?\s*([^。！？\n]+)/g,
+  ]);
+}
+
 function pushWeighted(target: WeightedLine[], text: string, weight: number): void {
   const normalized = normalizeLine(text);
   if (!normalized) return;
@@ -76,11 +159,18 @@ function collectPacket(params: ContinuityPacketParams): ContinuityPacket {
   for (const memory of params.memories) {
     const metadata = parseSmartMetadata(memory.metadata, memory);
     const artifactKind = typeof metadata.artifact_kind === "string" ? metadata.artifact_kind : "";
+    const activityDomain = typeof metadata.activity_domain === "string" ? metadata.activity_domain : "";
     const resumePriority = typeof metadata.resume_priority === "number" ? metadata.resume_priority : 0.5;
     const summary = metadata.l0_abstract || memory.text;
     const weight = resumePriority * 100 + (memory.timestamp ?? params.now) / 1_000_000_000;
 
     if (artifactKind === "progress" || artifactKind === "resource") pushWeighted(focus, summary, weight);
+    if (typeof metadata.project_key === "string" && metadata.project_key.trim()) {
+      pushWeighted(focus, `Project: ${metadata.project_key.trim()}`, weight - 2);
+    }
+    if (Array.isArray(metadata.resource_refs) && metadata.resource_refs.length > 0) {
+      pushWeighted(focus, `Files: ${metadata.resource_refs.slice(0, 3).join(", ")}`, weight - 1);
+    }
     if (artifactKind === "decision" || memory.category === "decision") pushWeighted(decisions, summary, weight);
     if (artifactKind === "open_loop") {
       pushWeighted(openLoops, summary, weight);
@@ -99,11 +189,45 @@ function collectPacket(params: ContinuityPacketParams): ContinuityPacket {
     for (const resourceRef of metadataResourceRefs) {
       pushWeighted(resources, resourceRef, weight);
     }
+
+    for (const hint of extractNextResumeHints(memory.text)) {
+      pushWeighted(nextResume, hint, weight + 3);
+    }
+    for (const hint of extractOpenLoopHints(memory.text)) {
+      pushWeighted(openLoops, hint, weight + 2);
+    }
+    if (activityDomain === "learning") {
+      for (const hint of extractLearningGapHints(memory.text)) {
+        pushWeighted(openLoops, `Knowledge gap: ${hint}`, weight + 4);
+      }
+      for (const hint of extractLearningPreferenceHints(memory.text)) {
+        pushWeighted(tools, hint, weight + 3);
+      }
+    }
+    if (activityDomain === "research") {
+      for (const hint of extractResearchQuestionHints(memory.text)) {
+        pushWeighted(openLoops, `Open question: ${hint}`, weight + 4);
+      }
+      for (const hint of extractResearchEvidenceHints(memory.text)) {
+        pushWeighted(decisions, `Evidence: ${hint}`, weight + 2);
+      }
+      for (const hint of extractSourceHints(memory.text)) {
+        for (const resourceRef of extractResourceRefs(hint)) {
+          pushWeighted(resources, resourceRef, weight + 3);
+        }
+      }
+    }
   }
 
   for (const derived of params.reflectionSlices.derived) {
     pushWeighted(openLoops, derived, 80);
     pushWeighted(nextResume, derived, 90);
+    for (const hint of extractNextResumeHints(derived)) {
+      pushWeighted(nextResume, hint, 95);
+    }
+    for (const hint of extractOpenLoopHints(derived)) {
+      pushWeighted(openLoops, hint, 92);
+    }
   }
 
   for (const invariant of params.reflectionSlices.invariants) {

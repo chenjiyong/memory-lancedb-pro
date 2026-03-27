@@ -104,6 +104,12 @@ If you use plugin session memory, `openclaw hooks list --json` should show the p
 
 - `memory-lancedb-pro-session-memory`
 
+Observed caveat:
+
+- some OpenClaw builds enumerate managed/bundled hooks in `hooks list --json` but do not enumerate every plugin-internal hook registration
+- treat `hooks list --json` as a registry-surface check, not the only proof that plugin hooks are active
+- use `openclaw memory-pro doctor --json`, plugin startup logs, and a real `/new` or agent smoke run as the primary evidence for plugin-side hook wiring
+
 If you want plugin-only session summaries, also confirm:
 
 - built-in `session-memory` is disabled
@@ -244,7 +250,7 @@ Run this matrix before release candidates or after major retrieval changes.
 
 - plugin loads successfully
 - gateway restart preserves plugin registration
-- `hooks list` shows expected hook state
+- `hooks list` returns the expected registry surface, and `memory-pro doctor --json` reports the expected hook expectations
 
 ### Retrieval
 

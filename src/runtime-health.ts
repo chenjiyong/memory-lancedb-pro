@@ -77,6 +77,14 @@ function summarizeHooks(requiredHooks: string[], registeredHooks: string[]): Run
     };
   }
 
+  if (registeredHooks.length === 0) {
+    return {
+      key: "hookRegistry",
+      status: "unknown",
+      summary: `Required hooks declared but runtime registration was not observed: ${requiredHooks.join(", ")}`,
+    };
+  }
+
   const missing = requiredHooks.filter((hook) => !registeredHooks.includes(hook));
   if (missing.length > 0) {
     return {
