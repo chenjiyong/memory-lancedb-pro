@@ -1608,6 +1608,11 @@ async function safeReadOpenClawRuntimeConfig(): Promise<Record<string, unknown>>
   return {};
 }
 
+function shouldRunGatewayStartupWork(argv: readonly string[] = process.argv): boolean {
+  const args = argv.slice(2);
+  return args.includes("gateway");
+}
+
 // ============================================================================
 // Plugin Definition
 // ============================================================================
@@ -1723,9 +1728,11 @@ const memoryLanceDBProPlugin = {
         const noiseBank = new NoisePrototypeBank(
           (msg: string) => api.logger.debug(msg),
         );
-        noiseBank.init(embedder).catch((err) =>
-          api.logger.debug(`memory-lancedb-pro: noise bank init: ${String(err)}`),
-        );
+        if (shouldRunGatewayStartupWork()) {
+          noiseBank.init(embedder).catch((err) =>
+            api.logger.debug(`memory-lancedb-pro: noise bank init: ${String(err)}`),
+          );
+        }
 
         const admissionRejectionAuditWriter = createAdmissionRejectionAuditWriter(
           config,
@@ -3739,6 +3746,13 @@ const memoryLanceDBProPlugin = {
     api.registerService({
       id: "memory-lancedb-pro",
       start: async () => {
+        if (!shouldRunGatewayStartupWork()) {
+          api.logger.debug?.(
+            "memory-lancedb-pro: skipping gateway-only startup checks for one-shot CLI invocation",
+          );
+          return;
+        }
+
         // IMPORTANT: Do not block gateway startup on external network calls.
         // If embedding/retrieval tests hang (bad network / slow provider), the gateway
         // may never bind its HTTP port, causing restart timeouts.
