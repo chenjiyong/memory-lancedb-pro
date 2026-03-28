@@ -374,6 +374,16 @@ export function parseSmartMetadata(
   return normalized;
 }
 
+export function metadataNeedsUpgrade(rawMetadata: string | undefined): boolean {
+  if (!rawMetadata) return true;
+  try {
+    const parsed = JSON.parse(rawMetadata);
+    return !parsed || typeof parsed !== "object" || typeof parsed.memory_category !== "string" || parsed.memory_category.trim().length === 0;
+  } catch {
+    return true;
+  }
+}
+
 export function buildSmartMetadata(
   entry: EntryLike,
   patch: Partial<SmartMemoryMetadata> = {},

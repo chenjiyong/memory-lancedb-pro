@@ -30,7 +30,40 @@ The intended adapter layer should support:
 - `Mem2ActBench`
 - `MemBench`
 
-When datasets are not checked into this repository, each adapter should document:
+The repository now ships an adapter wrapper entrypoint:
+
+```bash
+node scripts/bench/run-adapter-bench.mjs --list
+node scripts/bench/run-adapter-bench.mjs --check /absolute/path/to/adapter-config.json
+node scripts/bench/run-adapter-bench.mjs --run /absolute/path/to/adapter-config.json
+```
+
+Adapter config files should provide:
+
+- `adapter`
+- `datasetRoot`
+- `outputPath`
+- `command`
+
+Example:
+
+```json
+{
+  "adapter": "MemoryAgentBench",
+  "datasetRoot": "/absolute/path/to/memory-agent-bench",
+  "outputPath": "/absolute/path/to/reports/memory-agent-bench-result.json",
+  "command": [
+    "python",
+    "/absolute/path/to/run_adapter.py",
+    "--dataset",
+    "{datasetRoot}",
+    "--output",
+    "{outputPath}"
+  ]
+}
+```
+
+When datasets are not checked into this repository, each adapter should still document:
 
 - required input files
 - expected directory layout
@@ -57,4 +90,3 @@ A candidate release should only pass when all of the following are true:
 - Use fixture smoke as the minimum local gate.
 - Use host functional and real OpenClaw smoke before trusting benchmark wins.
 - Do not optimize for one benchmark by breaking continuity or OpenClaw stability.
-

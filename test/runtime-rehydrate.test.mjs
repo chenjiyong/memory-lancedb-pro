@@ -6,6 +6,7 @@ const jiti = jitiFactory(import.meta.url, { interopDefault: true });
 const { buildRuntimeHealthReport } = jiti("../src/runtime-health.ts");
 const { classifyRehydrateDecision } = jiti("../src/runtime-rehydrate.ts");
 const { buildRuntimeInspectionReport } = jiti("../src/runtime-inspection.ts");
+const { metadataNeedsUpgrade } = jiti("../src/smart-metadata.ts");
 
 function buildHealthyReport() {
   return buildRuntimeHealthReport({
@@ -80,6 +81,32 @@ describe("runtime rehydrate decision", () => {
 });
 
 describe("runtime inspection report", () => {
+  it("does not treat modern smart metadata without an explicit source field as upgrade-pending", () => {
+    assert.equal(
+      metadataNeedsUpgrade(JSON.stringify({
+        l0_abstract: "Memory plugin configuration preference",
+        l1_overview: "- Memory plugin configuration preference",
+        l2_content: "Memory plugin configuration preference",
+        memory_category: "preferences",
+        tier: "core",
+        access_count: 14,
+        confidence: 0.7,
+      })),
+      false,
+    );
+  });
+
+  it("still treats metadata without memory_category as upgrade-pending", () => {
+    assert.equal(
+      metadataNeedsUpgrade(JSON.stringify({
+        l0_abstract: "legacy memory",
+        l1_overview: "- legacy memory",
+        l2_content: "legacy memory",
+      })),
+      true,
+    );
+  });
+
   it("uses explicit memory counts instead of collapsing db artifacts into a boolean", () => {
     const report = buildRuntimeInspectionReport({
       pluginId: "memory-lancedb-pro",

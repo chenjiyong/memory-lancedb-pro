@@ -12,7 +12,7 @@
 
 ## 2. 当前基线
 
-### 2026-03-27 实施快照
+### 2026-03-28 实施快照
 
 - 已新增并接入：
   - `src/runtime-inspection.ts`
@@ -20,18 +20,27 @@
   - `test/dev-continuity-flow.test.mjs`
   - `test/learning-continuity-flow.test.mjs`
   - `test/research-continuity-flow.test.mjs`
+  - `test/openclaw-runtime-matrix.mjs`
+  - `test/openclaw-tool-loop-regression.mjs`
+  - `test/openclaw-agent-bootstrap-check.test.mjs`
   - `docs/benchmarks.md`
   - `scripts/bench/run-fixture-bench.mjs`
+  - `scripts/openclaw/check-agent-bootstrap.mjs`
 - 已完成的 fresh verification：
   - `npm test`
   - `npm run test:openclaw-host`
-- 当前剩余风险不是仓库内回归，而是 live OpenClaw profile 的命令级响应：
-  - `openclaw config validate` 可正常返回
-  - `openclaw plugins info memory-lancedb-pro`、`openclaw memory-pro doctor --json`、`openclaw memory-pro stats --json` 在打印插件启动日志后未在 20 秒内退出，因此不能计为 live 运维闭环已通过
-  - 已确认的仓库侧修复仍然成立：插件 service `start()` 的 deferred timer / interval 保活问题已修复，`npm test` 与 `npm run test:openclaw-host` 均通过
-  - 2026-03-27 新增定位结果：单独复制 `~/.openclaw/openclaw.json` 到临时 HOME 即可复现卡住，不需要复制 `memory/`、`agents/`、`workspace/` 等状态目录
-  - 进一步减法验证显示：当 `plugins.allow` 只保留 `memory-lancedb-pro` 时，`openclaw plugins info memory-lancedb-pro` 可正常退出；当 `plugins.allow` 额外包含 bundled `telegram` 或 `discord` 时，同一命令会再次超时
-  - 因此当前未通过的 live CLI 问题，边界已收敛到 OpenClaw `2026.3.14` 下的多插件 allowlist / one-shot CLI 行为，而不是本仓库 memory 插件单独保活
+- 当前默认环境 live verification 已通过：
+  - `openclaw config validate` 在 `0.84s` 内返回
+  - `openclaw plugins info memory-lancedb-pro` 在 `70.36s` 内返回 `Status: loaded`
+  - `openclaw memory-pro doctor --json` 在 `87.84s` 内返回，`rehydrate=resume-existing/resume-ready`
+  - `openclaw memory-pro stats --json` 在 `70.17s` 内返回
+  - `openclaw agent --agent main --session-id phase7-live-check --message "只回复三个字：验证通过。" --json` 在 `8.88s` 内返回 `status=ok`
+- 已确认的仓库侧修复仍然成立：插件 service `start()` 的 deferred timer / interval 保活问题已修复，`npm test` 与 `npm run test:openclaw-host` 均通过
+- 2026-03-28 新增定位结果：
+  - 单独复制 `~/.openclaw/openclaw.json` 到临时 HOME 即可复现“`20s` 探测阈值内不返回”，不需要复制 `memory/`、`agents/`、`workspace/` 等状态目录
+  - 进一步减法验证显示：当 `plugins.allow` 只保留 `memory-lancedb-pro` 时，`openclaw plugins info memory-lancedb-pro` 可正常退出；当 `plugins.allow` 额外包含 bundled `telegram` 或 `discord` 时，同一命令会显著慢于 `20s` 阈值，但最终仍可返回
+  - `doctor` 原先把缺少显式 `source` 字段、但已具备 `memory_category` 的新格式记忆误判为 legacy；该判定现已与 upgrader 对齐，因此 live `rehydrate` 已恢复为 `resume-ready`
+  - `openclaw agent --json` 本轮验证前曾因 `openai-codex` refresh token 失效失败；重新登录后 smoke 已通过
 
 ### 已落地能力
 
@@ -97,39 +106,33 @@
 
 现状：
 
-- 启动期已经会生成 runtime health 日志。
-- `memory-pro doctor` 已能输出 health + rehydrate 摘要。
+- `src/runtime-inspection.ts` 已作为统一采集入口存在并接入仓库。
+- 启动期 runtime health 与 `memory-pro doctor` 已共享 inspection / rehydrate 结果。
+- `test/runtime-health.test.mjs`、`test/runtime-rehydrate.test.mjs`、`test/cli-smoke.mjs`、`test/openclaw-host-functional.mjs` 已覆盖这条链路。
 
 仍有差距：
 
-- 启动路径与 `doctor` 使用的数据来源还不完全一致。
-- 启动期的 `memoryCount`、`reflectionArtifactCount`、`hasLegacyArtifacts` 仍存在简化推断。
-- `migrate pending`、`stale artifacts` 这类状态还没有形成统一分类术语。
+- 当前差距已不在 live 闭环是否通过，而在 OpenClaw `2026.3.14` 默认 profile 下的 one-shot CLI 返回延迟明显偏高。
 
 影响：
 
-- OpenClaw fresh install / later install / idle resume / upgrade 这几类路径的日志与恢复动作还不够稳定。
+- 仓库内与 live 环境的 runtime / rehydrate 结论已一致，但默认 live profile 的 CLI 交互时延仍会影响运维体验。
 
 ### B. 工作连续性
 
 现状：
 
-- continuity packet 已存在。
+- continuity packet 已覆盖 dev / learning / research 三类提取路径。
 - packet 已限制预算，且不会直接注入整段 reflection 原文。
+- `test/dev-continuity-flow.test.mjs`、`test/learning-continuity-flow.test.mjs`、`test/research-continuity-flow.test.mjs`、`test/recall-text-cleanup.test.mjs` 已覆盖领域提取、注入顺序与预算。
 
 仍有差距：
 
-- 当前更像“摘要包”，还不是“继续工作包”。
-- 对开发场景，缺少稳定提取：
-  - 当前模块/文件
-  - 已完成 / 未完成
-  - 失败点与规避方式
-  - 常用命令、工具、skills
-- 对学习和研究场景，缺少面向知识缺口、证据来源、待验证问题的专门提取。
+- 当前阶段没有新的 continuity 功能缺口；live smoke 已纳入通过。
 
 影响：
 
-- 新 session 能想起“相关内容”，但未必能直接“继续做事”。
+- continuity 的仓库内行为与 live smoke 现在都已有通过记录。
 
 ### C. 场景化记忆路由
 
@@ -137,33 +140,32 @@
 
 - 已有 `dev | learning | research | general` 路由。
 - 已有 `artifact_kind` 级别的 boost。
+- scenario router 已接入 `continuityText`、`projectKey`、`recentHintText` 上下文输入。
+- `test/scenario-router.test.mjs` 已覆盖“同 query 不同上下文差异排序”和“boost 不 hard filter”。
 
 仍有差距：
 
-- 当前路由主要依赖 query 正则匹配。
-- 尚未充分接入 session context、workspace/project key、recent continuity packet。
-- metadata 写入路径还没有系统性地产生 learning / research 专用信号。
+- 当前差距主要不在功能实现，而在长期运行下的性能与时延观测尚未工程化。
 
 影响：
 
-- 同一 query 在不同上下文下的召回差异还不够稳定。
+- 仓库内排序分布差异已有测试保证，且 live smoke 已计入通过。
 
 ### D. 记忆使用反馈闭环
 
 现状：
 
 - 已有 injected/confirmed-use 级别的 metadata patch。
-- 已能对 stale injection 做一定抑制。
+- 已接入 `agent_end` 弱归因，覆盖 injected-but-unused、used-in-answer、used-in-action、stale suppression。
+- `used_count`、`last_used_at`、`false_positive_recall_count`、`resume_effective_count` 已进入 metadata 兼容层。
 
 仍有差距：
 
-- 还没有 `agent_end` 后的实际使用归因。
-- 缺少“被注入但未帮助回答”和“被注入且帮助完成动作”的稳定区分。
-- 与 rerank / governance / compactor 的长期联动仍偏轻量。
+- 当前效果仍以仓库内单测为主，尚未扩展成长期线上观测指标。
 
 影响：
 
-- recall 排名还是更接近“像不像”，而不是“是否真的帮助了任务继续”。
+- 使用反馈链路已有实现、测试和 live smoke 通过记录，但长期运行数据仍未沉淀为固定观测面板。
 
 ### E. OpenClaw 回归矩阵与 benchmark gate
 
@@ -172,16 +174,26 @@
 - host functional 已覆盖核心 CLI/插件闭环。
 - OpenClaw playbook 已存在。
 - repo 内已有 benchmark fixture runner。
+- `dev continuity` / `learning continuity` / `research continuity` 专项流程测试已建立。
+- `scripts/bench/`、`scripts/bench/README.md`、`docs/benchmarks.md` 已建立。
+- runtime / rehydrate 矩阵已补到 `test/openclaw-runtime-matrix.mjs`：
+  - fresh install
+  - workspace rehydrate
+  - resume-ready
+  - stale artifacts
+  - migrate pending
+- tool loop / scope isolation / `/new` session-summary 闭环已补到 `test/openclaw-tool-loop-regression.mjs`。
+- fresh-agent bootstrap 文件预检查已补到 `scripts/openclaw/check-agent-bootstrap.mjs` 与对应测试。
+- OpenClaw `2026.3.22` / `2026.3.23` 的 runtime health 兼容基线已通过参数化测试固定。
 
 仍有差距：
 
-- `dev continuity` / `learning continuity` / `research continuity` 专项流程测试尚未建立。
-- `scripts/bench/` 与 `docs/benchmarks.md` 尚未建立。
 - 真实 benchmark adapter 仍未接上 `MemoryAgentBench`、`LongMemEval`、`LoCoMo`、`Mem2ActBench`、`MemBench`。
+- 默认 live profile 的 one-shot CLI 虽已闭环，但在 OpenClaw `2026.3.14` 下仍明显慢于 `20s` 探测阈值。
 
 影响：
 
-- 当前能做仓库内烟测，但还不能把“整体正收益”收敛成发布门槛。
+- 当前已具备仓库内 smoke、continuity、runtime matrix、bootstrap precheck、默认 live OpenClaw 验证与最小 benchmark gate；剩余未收敛项主要是外部 benchmark adapter 与 live CLI 时延。
 
 ## 6. OpenClaw 视角下的优化原则
 

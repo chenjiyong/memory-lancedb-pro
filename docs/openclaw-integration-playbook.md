@@ -110,13 +110,18 @@ Observed caveat:
 - treat `hooks list --json` as a registry-surface check, not the only proof that plugin hooks are active
 - use `openclaw memory-pro doctor --json`, plugin startup logs, and a real `/new` or agent smoke run as the primary evidence for plugin-side hook wiring
 
-Observed 2026-03-27 caveat on OpenClaw `2026.3.14`:
+Observed 2026-03-28 caveat on OpenClaw `2026.3.14`:
 
-- one-shot CLI commands can hang even when `memory-lancedb-pro` itself is no longer holding the event loop open
+- one-shot CLI commands can exceed a `20s` probe threshold even when `memory-lancedb-pro` itself is no longer holding the event loop open
 - this was reproduced with a temporary HOME that contained only a copied `openclaw.json`
-- the repro boundary narrowed to `plugins.allow`: when the allowlist only contained `memory-lancedb-pro`, `openclaw plugins info memory-lancedb-pro` exited normally; when the allowlist additionally contained bundled `telegram` or `discord`, the same command timed out
-- the same timeout pattern also affected `openclaw plugins list --json`, `openclaw memory-pro doctor --json`, and `openclaw memory-pro stats --json`
-- treat this as an OpenClaw CLI/runtime interaction boundary when validating live profiles on `2026.3.14`
+- the repro boundary narrowed to `plugins.allow`: when the allowlist only contained `memory-lancedb-pro`, `openclaw plugins info memory-lancedb-pro` exited normally; when the allowlist additionally contained bundled `telegram` or `discord`, the same command became much slower
+- on the default live profile, `openclaw plugins info memory-lancedb-pro` completed in `70.36s`, `openclaw memory-pro stats --json` in `70.17s`, and `openclaw memory-pro doctor --json` in `87.84s`
+- treat this as an OpenClaw CLI/runtime latency boundary when validating live profiles on `2026.3.14`, not as proof that the memory plugin still keeps the event loop alive
+
+Repository-side compatibility baseline:
+
+- `test/runtime-health.test.mjs` treats OpenClaw `2026.3.22` and `2026.3.23` as the no-warning compatibility floor for runtime health checks
+- keep the `2026.3.14` caveat above separate from that baseline; it is a live CLI/runtime behavior note, not the repo-side health threshold
 
 If you want plugin-only session summaries, also confirm:
 
@@ -140,6 +145,14 @@ Verify these files exist under the new agent directory:
 - `~/.openclaw/agents/<agentId>/agent/auth-profiles.json`
 
 Also verify the agent can resolve at least one usable model before testing memory behavior.
+
+Repository-side precheck:
+
+```bash
+node scripts/openclaw/check-agent-bootstrap.mjs --agent-id <agentId> --json
+```
+
+This verifies the expected bootstrap files before you spend time debugging memory behavior.
 
 Practical rule:
 
@@ -253,6 +266,35 @@ If built-in session memory is disabled, do not treat the absence of a workspace 
 ## 8. Recommended Regression Matrix
 
 Run this matrix before release candidates or after major retrieval changes.
+
+Repository automation currently covers:
+
+- `node test/openclaw-host-functional.mjs`
+  - config validate
+  - plugins info
+  - `memory-pro doctor --json`
+  - `hooks list --json`
+  - import / list / search / stats / export / delete / migrate
+- `node test/openclaw-runtime-matrix.mjs`
+  - fresh install
+  - workspace rehydrate
+  - resume-ready
+  - stale artifacts
+  - migrate pending
+- `node test/openclaw-tool-loop-regression.mjs`
+  - `memory_store`
+  - `memory_recall`
+  - `memory_update`
+  - `memory_forget`
+  - `memory_list`
+  - `memory_stats`
+  - scope isolation
+  - `/new` session-summary storage
+- `node --test test/openclaw-agent-bootstrap-check.test.mjs`
+  - fresh-agent bootstrap file precheck
+- `node --test test/dev-continuity-flow.test.mjs`
+- `node --test test/learning-continuity-flow.test.mjs`
+- `node --test test/research-continuity-flow.test.mjs`
 
 ### Integration
 

@@ -120,6 +120,11 @@ openclaw hooks list --json
 
 - 内置 `session-memory` 已禁用
 
+仓库侧兼容基线：
+
+- `test/runtime-health.test.mjs` 当前把 OpenClaw `2026.3.22` 和 `2026.3.23` 视为 runtime health 的无告警兼容基线
+- `2026.3.14` 的默认 live profile 在 `plugins.allow` 额外包含 bundled `telegram` / `discord` 时，one-shot CLI 会明显慢于 `20s` 探测阈值，但最终仍可返回；这应视为 live CLI/runtime 时延边界，而不是仓库内健康基线
+
 ## 4. 新 Agent 引导检查
 
 新 Agent 首轮真实对话失败时，不要先怀疑检索。先检查 Agent 启动链路。
@@ -138,6 +143,14 @@ openclaw hooks list --json
 - `~/.openclaw/agents/<agentId>/agent/auth-profiles.json`
 
 并确认该 Agent 至少能先跑通一次普通文本对话，再做记忆相关测试。
+
+仓库内也提供了一个文件级预检查脚本：
+
+```bash
+node scripts/openclaw/check-agent-bootstrap.mjs --agent-id <agentId> --json
+```
+
+它会先检查 `models.json` 和 `auth-profiles.json` 是否齐全，再决定是否值得继续做 memory 联调。
 
 工程上可以直接采用这条规则：
 
@@ -251,6 +264,35 @@ openclaw memory-pro search "your test keyword" --scope global --limit 5
 ## 8. 推荐回归矩阵
 
 每次准备发布、或修改检索 / Hook / 生命周期逻辑后，建议至少跑下面这组回归。
+
+当前仓库内自动化已经覆盖：
+
+- `node test/openclaw-host-functional.mjs`
+  - config validate
+  - plugins info
+  - `memory-pro doctor --json`
+  - `hooks list --json`
+  - import / list / search / stats / export / delete / migrate
+- `node test/openclaw-runtime-matrix.mjs`
+  - fresh install
+  - workspace rehydrate
+  - resume-ready
+  - stale artifacts
+  - migrate pending
+- `node test/openclaw-tool-loop-regression.mjs`
+  - `memory_store`
+  - `memory_recall`
+  - `memory_update`
+  - `memory_forget`
+  - `memory_list`
+  - `memory_stats`
+  - scope isolation
+  - `/new` session summary 落库
+- `node --test test/openclaw-agent-bootstrap-check.test.mjs`
+  - fresh-agent bootstrap 文件预检查
+- `node --test test/dev-continuity-flow.test.mjs`
+- `node --test test/learning-continuity-flow.test.mjs`
+- `node --test test/research-continuity-flow.test.mjs`
 
 ### 集成
 

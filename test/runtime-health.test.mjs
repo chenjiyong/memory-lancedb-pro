@@ -11,6 +11,25 @@ const {
 } = jiti("../src/runtime-rehydrate.ts");
 
 describe("runtime health report", () => {
+  for (const version of ["2026.3.22", "2026.3.23"]) {
+    it(`treats OpenClaw ${version} as a non-warning compatibility baseline`, () => {
+      const report = buildRuntimeHealthReport({
+        pluginId: "memory-lancedb-pro",
+        pluginRoot: "/repo/memory-lancedb-pro",
+        dbPath: "/tmp/db",
+        workspaceDir: "/tmp/workspace",
+        openclawVersion: version,
+        pluginSlot: "memory-lancedb-pro",
+        allowlist: ["memory-lancedb-pro"],
+        loadPaths: ["/repo/memory-lancedb-pro"],
+        requiredHooks: ["before_prompt_build"],
+        registeredHooks: ["before_prompt_build"],
+      });
+
+      assert.equal(report.checks.find((check) => check.key === "openclawVersion")?.status, "pass");
+    });
+  }
+
   it("reports healthy when plugin slot, allowlist, load path, and hooks are ready", () => {
     const report = buildRuntimeHealthReport({
       pluginId: "memory-lancedb-pro",

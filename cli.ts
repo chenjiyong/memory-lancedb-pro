@@ -29,7 +29,7 @@ import {
   countWorkspaceArtifacts,
   inferExpectedRuntimeHooks,
 } from "./src/runtime-inspection.js";
-import { parseSmartMetadata } from "./src/smart-metadata.js";
+import { metadataNeedsUpgrade, parseSmartMetadata } from "./src/smart-metadata.js";
 
 // ============================================================================
 // Types
@@ -815,7 +815,7 @@ export function registerMemoryCLI(program: Command, context: CLIContext): void {
           : path.join(resolveOpenClawHome(), "workspace");
         const stats = await context.store.stats();
         const recentEntries = await context.store.list(undefined, undefined, 120, 0);
-        const hasLegacyArtifacts = recentEntries.some((entry) => parseSmartMetadata(entry.metadata, entry).source === "legacy");
+        const hasLegacyArtifacts = recentEntries.some((entry) => metadataNeedsUpgrade(entry.metadata));
         const inspection = buildRuntimeInspectionReport({
           pluginId,
           pluginRoot: process.cwd(),

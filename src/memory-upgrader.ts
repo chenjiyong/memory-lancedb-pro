@@ -17,7 +17,7 @@ import type { MemoryStore, MemoryEntry } from "./store.js";
 import type { LlmClient } from "./llm-client.js";
 import type { MemoryCategory } from "./memory-categories.js";
 import type { MemoryTier } from "./memory-categories.js";
-import { buildSmartMetadata, stringifySmartMetadata } from "./smart-metadata.js";
+import { buildSmartMetadata, metadataNeedsUpgrade, stringifySmartMetadata } from "./smart-metadata.js";
 
 // ============================================================================
 // Types
@@ -173,14 +173,7 @@ export class MemoryUpgrader {
    * Legacy = no metadata, or metadata lacks `memory_category`.
    */
   isLegacyMemory(entry: MemoryEntry): boolean {
-    if (!entry.metadata) return true;
-    try {
-      const meta = JSON.parse(entry.metadata);
-      // If it has memory_category, it was created by SmartExtractor → new format
-      return !meta.memory_category;
-    } catch {
-      return true;
-    }
+    return metadataNeedsUpgrade(entry.metadata);
   }
 
   /**
