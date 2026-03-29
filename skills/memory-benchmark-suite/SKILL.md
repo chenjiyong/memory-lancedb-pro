@@ -9,6 +9,10 @@ description: Use when running or reproducing MemoryAgentBench, LongMemEval, LoCo
 
 Use this skill when you need a fact-based runbook for the memory benchmarks referenced by this repository.
 
+This skill covers both:
+- single-benchmark execution
+- multi-benchmark child-session dispatch, where multiple benchmark sub-sessions run in parallel with isolated logs and artifacts
+
 The current repository status is:
 
 - `LongMemEval`: repo-local adapter implemented
@@ -20,8 +24,13 @@ The current repository status is:
 ## Rules
 
 - Use official benchmark repositories or papers as the source of truth.
-- Do not assume a repo-local adapter exists just because a benchmark name appears in `scripts/bench/adapter-registry.mjs`.
+- Do not assume a repo-local adapter exists just because a benchmark name appears in `/Users/jige/work/memory-lancedb-pro/scripts/bench/adapter-registry.mjs`.
 - If a benchmark does not have a verified public repo or verified run command in the current notes, stop at the confirmed source gap instead of inventing a command.
+- For parallel child-session dispatch, assign one child session per benchmark.
+- Each child session must use its own working directory, output directory, and log file path.
+- Do not reuse another active benchmark run's artifact directory.
+- Do not stop or modify an already-running benchmark process unless the user explicitly asks.
+- Child sessions must report facts only: official source, actual command, sample scope, artifacts, status, blockers, and observed metrics.
 
 ## Quick Reference
 
@@ -33,6 +42,23 @@ The current repository status is:
   - `npm run bench:longmemeval:check -- /absolute/path/to/longmemeval.json`
 - Repo-local LongMemEval run:
   - `npm run bench:longmemeval:run -- /absolute/path/to/longmemeval.json`
+- Parallel child-session templates:
+  - `/Users/jige/work/memory-lancedb-pro/skills/memory-benchmark-suite/parallel-dispatch-templates.md`
+- Parallel dispatch checklist:
+  - `/Users/jige/work/memory-lancedb-pro/skills/memory-benchmark-suite/parallel-dispatch-checklist.md`
+
+## Parallel Child-Session Scenario
+
+Use parallel child-session dispatch when the user wants several benchmarks explored at the same time and the runs do not need to share mutable state.
+
+Required dispatch contract:
+- dispatch one child session per benchmark
+- give each child session an isolated benchmark root or output subtree
+- record log paths before launch
+- record whether the child session uses a distinct provider key or a shared one
+- keep benchmark summaries separate until the final rollup
+
+When gathering results from parallel runs, keep each benchmark in its own section and only produce a combined table after all child sessions have reported.
 
 ## Benchmarks
 
@@ -45,7 +71,7 @@ The current repository status is:
   - `longmemeval_s_cleaned.json`
 - Not supported locally in this first pass:
   - `longmemeval_m_cleaned.json`
-- Use the repo-local adapter workflow in `docs/benchmarks.md` and `scripts/bench/configs/longmemeval.example.json`.
+- Use the repo-local adapter workflow in `/Users/jige/work/memory-lancedb-pro/docs/benchmarks.md` and `/Users/jige/work/memory-lancedb-pro/scripts/bench/configs/longmemeval.example.json`.
 
 ### MemoryAgentBench
 

@@ -10,6 +10,61 @@
 | Mem2ActBench | [arXiv:2601.19935](https://arxiv.org/abs/2601.19935) | adapter name only | none |
 | MemBench | [import-myself/Membench](https://github.com/import-myself/Membench) | adapter name only | none |
 
+## Parallel Benchmark Session Dispatch
+
+Use this section when the user wants multiple benchmark child sessions running in parallel.
+
+### Preflight
+
+Before dispatch:
+- record already-running benchmark processes
+- choose the benchmark set to run in parallel
+- assign one child session per benchmark
+- assign a distinct output directory and log path for each child session
+- record whether each child session uses a shared provider key or a distinct key
+- verify that no child session will reuse another run's artifact directory
+
+### Required Child-Session Context
+
+Every child session should receive:
+- benchmark name
+- official source to use as ground truth
+- local repository status in `/Users/jige/work/memory-lancedb-pro`
+- exact benchmark root or clone directory to use
+- sample scope, if the user asked for partial runs only
+- provider and credential constraints supplied by the user
+- explicit instruction not to affect any already-running benchmark process
+- explicit instruction to report facts only
+
+### Isolation Rules
+
+For every parallel child session:
+- use an isolated working directory or isolated benchmark output subtree
+- use a unique log file path
+- use a unique result path
+- do not delete another benchmark's temp, output, or artifact directories
+- do not modify `/Users/jige/work/memory-lancedb-pro` unless the user asked for repository changes
+- do not stop sibling benchmark sessions
+
+### Result Collection Fields
+
+Collect these fields from each child session before the final rollup:
+- official source used
+- actual commands executed
+- sample or dataset scope
+- artifact paths
+- status
+- blockers
+- observed metrics
+- known limitations or source gaps
+
+### Final Rollup Rules
+
+- keep each benchmark in its own section first
+- do not merge incomparable metrics into one synthetic score
+- only produce the final summary table after all child sessions have returned
+- if one child session stops at a source gap, preserve that status instead of replacing it with an inferred result
+
 ## LongMemEval
 
 ### Official source
@@ -22,7 +77,7 @@
 ### This repository
 
 - Config template:
-  - [scripts/bench/configs/longmemeval.example.json](/Users/chenjiyong/learning/memory-lancedb-pro/scripts/bench/configs/longmemeval.example.json)
+  - [/Users/jige/work/memory-lancedb-pro/scripts/bench/configs/longmemeval.example.json](/Users/jige/work/memory-lancedb-pro/scripts/bench/configs/longmemeval.example.json)
 - Commands:
   - `npm run bench:longmemeval:check -- /absolute/path/to/longmemeval.json`
   - `npm run bench:longmemeval:run -- /absolute/path/to/longmemeval.json`
@@ -34,13 +89,15 @@
 ### Verified status in this repository
 
 - Implemented local adapter files:
-  - [scripts/bench/longmemeval/adapter.mjs](/Users/chenjiyong/learning/memory-lancedb-pro/scripts/bench/longmemeval/adapter.mjs)
-  - [scripts/bench/longmemeval/harness.mjs](/Users/chenjiyong/learning/memory-lancedb-pro/scripts/bench/longmemeval/harness.mjs)
-  - [scripts/bench/longmemeval/evaluate-qa-compatible.mjs](/Users/chenjiyong/learning/memory-lancedb-pro/scripts/bench/longmemeval/evaluate-qa-compatible.mjs)
+  - [/Users/jige/work/memory-lancedb-pro/scripts/bench/longmemeval/adapter.mjs](/Users/jige/work/memory-lancedb-pro/scripts/bench/longmemeval/adapter.mjs)
+  - [/Users/jige/work/memory-lancedb-pro/scripts/bench/longmemeval/harness.mjs](/Users/jige/work/memory-lancedb-pro/scripts/bench/longmemeval/harness.mjs)
+  - [/Users/jige/work/memory-lancedb-pro/scripts/bench/longmemeval/evaluate-qa-compatible.mjs](/Users/jige/work/memory-lancedb-pro/scripts/bench/longmemeval/evaluate-qa-compatible.mjs)
 - Verified smoke result from this development cycle:
-  - `longmemeval_oracle.json` 2-sample OpenRouter smoke passed with `overallAccuracy = 1`
-- Verified full-run result from this development cycle:
-  - one full `oracle` run failed with `Failed to generate embedding from openrouter.ai: Cannot read properties of undefined (reading '0')`
+  - `longmemeval_oracle.json` 2-sample OpenRouter smoke passed with `overallAccuracy = 0.5`
+- Verified partial-run result from this development cycle:
+  - `longmemeval_oracle.json` 50-sample partial run completed with `overallAccuracy = 0.44`
+- Verified full-run observation from this development cycle:
+  - one full `oracle` run was started and later paused without intermediate summary output because the current harness writes `hypotheses.jsonl` after the case loop completes
 
 ## MemoryAgentBench
 
@@ -81,8 +138,15 @@
 ### This repository
 
 - Current status:
-  - listed in [scripts/bench/adapter-registry.mjs](/Users/chenjiyong/learning/memory-lancedb-pro/scripts/bench/adapter-registry.mjs)
+  - listed in [/Users/jige/work/memory-lancedb-pro/scripts/bench/adapter-registry.mjs](/Users/jige/work/memory-lancedb-pro/scripts/bench/adapter-registry.mjs)
   - no repo-local adapter implementation was added in this development cycle
+
+### Verified observed results from this development cycle
+
+- 1-sample official smoke run completed with perfect metrics on that single sample
+- 50-sample partial run completed with:
+  - `f1 = 9.41293109954902`
+  - `exact_match = 0`
 
 ## LoCoMo
 
@@ -110,8 +174,15 @@
 ### This repository
 
 - Current status:
-  - listed in [scripts/bench/adapter-registry.mjs](/Users/chenjiyong/learning/memory-lancedb-pro/scripts/bench/adapter-registry.mjs)
+  - listed in [/Users/jige/work/memory-lancedb-pro/scripts/bench/adapter-registry.mjs](/Users/jige/work/memory-lancedb-pro/scripts/bench/adapter-registry.mjs)
   - no repo-local adapter implementation was added in this development cycle
+
+### Verified observed results from this development cycle
+
+- smoke subset result observed:
+  - `80 QA` with `overall_accuracy = 0.318`
+- observed issue during one smoke attempt:
+  - official-script path hit `KeyError: 'answer'` on a category-5 example before the later 80-QA output was produced
 
 ## Mem2ActBench
 
@@ -128,7 +199,7 @@
 ### This repository
 
 - Current status:
-  - listed in [scripts/bench/adapter-registry.mjs](/Users/chenjiyong/learning/memory-lancedb-pro/scripts/bench/adapter-registry.mjs)
+  - listed in [/Users/jige/work/memory-lancedb-pro/scripts/bench/adapter-registry.mjs](/Users/jige/work/memory-lancedb-pro/scripts/bench/adapter-registry.mjs)
   - no public benchmark repository or runnable command was verified in this development cycle
   - no repo-local adapter implementation was added in this development cycle
 
@@ -154,6 +225,12 @@
 ### This repository
 
 - Current status:
-  - listed in [scripts/bench/adapter-registry.mjs](/Users/chenjiyong/learning/memory-lancedb-pro/scripts/bench/adapter-registry.mjs)
+  - listed in [/Users/jige/work/memory-lancedb-pro/scripts/bench/adapter-registry.mjs](/Users/jige/work/memory-lancedb-pro/scripts/bench/adapter-registry.mjs)
   - no repo-local adapter implementation was added in this development cycle
   - no end-to-end official evaluation command was verified from the fetched README lines in this development cycle
+
+### Verified observed results from this development cycle
+
+- 50-sample partial run completed with:
+  - `accuracy = 0.96`
+  - `avg_recall = 1.0`
