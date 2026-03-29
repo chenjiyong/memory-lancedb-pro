@@ -103,6 +103,7 @@ async function expectReject(promiseFactory, pattern) {
 async function run() {
   assert.equal(getVectorDimensions("voyage-4-lite"), 1024);
   assert.equal(getVectorDimensions("voyage-3-large"), 1024);
+  assert.equal(getVectorDimensions("openai/text-embedding-3-small"), 1536);
 
   const voyageEmbedder = new Embedder({
     provider: "openai-compatible",
@@ -247,6 +248,40 @@ async function run() {
       assert.match(msg, /Invalid API key/i, msg);
       assert.match(msg, new RegExp(`127\\.0\\.0\\.1:${port}`), msg);
       assert.doesNotMatch(msg, /Check .* for Jina\./i, msg);
+    },
+  );
+
+  await withJsonServer(
+    429,
+    { error: { message: "You exceeded your current quota", code: "insufficient_quota" } },
+    async ({ baseURL }) => {
+      const embedder = new Embedder({
+        provider: "openai-compatible",
+        apiKey: "quota-key",
+        model: "text-embedding-3-small",
+        baseURL,
+        dimensions: 1536,
+      });
+
+      const chunkLogs = [];
+      const originalLog = console.log;
+      console.log = (...args) => {
+        chunkLogs.push(args.join(" "));
+      };
+
+      try {
+        const msg = await expectReject(
+          () => embedder.embedPassage("quota probe"),
+          /quota|rate limited|authentication failed|embedding provider/i,
+        );
+        assert.match(msg, /quota|rate limited/i, msg);
+        assert.ok(
+          chunkLogs.every((line) => !/attempting chunking/i.test(line)),
+          `Did not expect chunking logs for quota errors, got: ${chunkLogs.join(" | ")}`,
+        );
+      } finally {
+        console.log = originalLog;
+      }
     },
   );
 

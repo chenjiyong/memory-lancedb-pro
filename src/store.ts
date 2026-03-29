@@ -202,6 +202,18 @@ export class MemoryStore {
 
   constructor(private readonly config: StoreConfig) { }
 
+  close(): void {
+    try {
+      this.table?.close();
+    } catch {}
+    try {
+      this.db?.close();
+    } catch {}
+    this.table = null;
+    this.db = null;
+    this.initPromise = null;
+  }
+
   private async runWithFileLock<T>(fn: () => Promise<T>): Promise<T> {
     const lockfile = await loadLockfile();
     const lockPath = join(this.config.dbPath, ".memory-write.lock");

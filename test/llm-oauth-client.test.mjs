@@ -95,6 +95,7 @@ describe("LLM OAuth client", () => {
     assert.equal(requestHeaders.get("openai-beta"), "responses=experimental");
     assert.equal(requestBody.model, "gpt-5.4");
     assert.equal(requestBody.stream, true);
+    assert.equal(requestBody.temperature, 0.1);
     assert.deepEqual(requestBody.input, [
       {
         role: "user",
@@ -107,6 +108,107 @@ describe("LLM OAuth client", () => {
       },
     ]);
     assert.equal(requestBody.store, false);
+  });
+
+  it("honors an explicit OAuth temperature override", async () => {
+    const accessToken = makeJwt({
+      exp: Math.floor((Date.now() + 3_600_000) / 1000),
+      [ACCOUNT_ID_CLAIM]: {
+        chatgpt_account_id: "acct_temp_123",
+      },
+    });
+
+    const authPath = path.join(tempDir, "auth.json");
+    writeFileSync(
+      authPath,
+      JSON.stringify({
+        tokens: {
+          access_token: accessToken,
+          refresh_token: "refresh-token",
+        },
+      }),
+      "utf8",
+    );
+
+    let requestBody;
+
+    globalThis.fetch = async (_url, init) => {
+      requestBody = JSON.parse(init?.body);
+      const eventPayload = JSON.stringify({
+        type: "response.output_text.done",
+        text: "stable",
+      });
+      return new Response(
+        [
+          "event: response.output_text.done",
+          `data: ${eventPayload}`,
+          "",
+        ].join("\n"),
+        {
+          status: 200,
+        },
+      );
+    };
+
+    const llm = createLlmClient({
+      auth: "oauth",
+      model: "openai/gpt-5.4",
+      oauthPath: authPath,
+      timeoutMs: 5_000,
+      temperature: 0,
+    });
+
+    const result = await llm.completeText("answer this deterministically");
+    assert.equal(result, "stable");
+    assert.equal(requestBody.temperature, 0);
+  });
+
+  it("returns plain text from OAuth SSE responses", async () => {
+    const accessToken = makeJwt({
+      exp: Math.floor((Date.now() + 3_600_000) / 1000),
+      [ACCOUNT_ID_CLAIM]: {
+        chatgpt_account_id: "acct_text_123",
+      },
+    });
+
+    const authPath = path.join(tempDir, "auth.json");
+    writeFileSync(
+      authPath,
+      JSON.stringify({
+        tokens: {
+          access_token: accessToken,
+          refresh_token: "refresh-token",
+        },
+      }),
+      "utf8",
+    );
+
+    globalThis.fetch = async () => {
+      const eventPayload = JSON.stringify({
+        type: "response.output_text.done",
+        text: "insufficient information",
+      });
+      return new Response(
+        [
+          "event: response.output_text.done",
+          `data: ${eventPayload}`,
+          "",
+        ].join("\n"),
+        {
+          status: 200,
+        },
+      );
+    };
+
+    const llm = createLlmClient({
+      auth: "oauth",
+      model: "openai/gpt-5.4",
+      oauthPath: authPath,
+      timeoutMs: 5_000,
+    });
+
+    const result = await llm.completeText("answer this");
+    assert.equal(result, "insufficient information");
   });
 
   it("binds the OAuth callback server to the redirect host", () => {

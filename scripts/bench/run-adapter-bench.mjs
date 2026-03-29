@@ -5,6 +5,10 @@ import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getBenchmarkAdapter, listBenchmarkAdapters } from "./adapter-registry.mjs";
+import {
+  buildLongMemEvalReadinessSummary,
+  runLongMemEvalAdapter,
+} from "./longmemeval/adapter.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,8 +48,16 @@ async function loadConfig(configPath) {
     configPath: resolvedConfigPath,
     configDir,
     cwd: resolvePath(parsed.cwd || repoRoot, configDir),
+    repoRoot: resolvePath(parsed.repoRoot, configDir),
     datasetRoot: resolvePath(parsed.datasetRoot, configDir),
     outputPath: resolvePath(parsed.outputPath, configDir),
+    artifactsDir: resolvePath(parsed.artifactsDir, configDir),
+    reader: parsed.reader && typeof parsed.reader === "object"
+      ? {
+          ...parsed.reader,
+          oauthPath: resolvePath(parsed.reader.oauthPath, configDir),
+        }
+      : parsed.reader,
   };
   return resolved;
 }
@@ -72,6 +84,9 @@ function buildCommand(config) {
 async function buildReadinessSummary(configPath) {
   const config = await loadConfig(configPath);
   const adapter = getBenchmarkAdapter(config.adapter);
+  if (config.adapter === "LongMemEval") {
+    return buildLongMemEvalReadinessSummary(config);
+  }
   const issues = [];
 
   if (!adapter) {
@@ -117,6 +132,17 @@ async function buildReadinessSummary(configPath) {
 }
 
 async function runAdapter(configPath) {
+  const config = await loadConfig(configPath);
+  if (config.adapter === "LongMemEval") {
+    const summary = await runLongMemEvalAdapter(config);
+    process.stdout.write(formatJson(summary));
+    process.stdout.write("\n");
+    if (summary.exitCode !== 0 || summary.signal) {
+      process.exit(summary.exitCode ?? 1);
+    }
+    return;
+  }
+
   const summary = await buildReadinessSummary(configPath);
   if (!summary.ready) {
     process.stdout.write(formatJson(summary));
@@ -124,7 +150,6 @@ async function runAdapter(configPath) {
     process.exit(1);
   }
 
-  const config = await loadConfig(configPath);
   const builtCommand = buildCommand(config);
 
   const child = spawn(builtCommand.executable, builtCommand.args, {

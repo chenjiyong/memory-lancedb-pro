@@ -159,6 +159,22 @@ const EMBEDDING_DIMENSIONS: Record<string, number> = {
   "voyage-3-large": 1024,
 };
 
+function normalizeEmbeddingModelKey(model: string): string {
+  if (EMBEDDING_DIMENSIONS[model]) {
+    return model;
+  }
+
+  const slashIndex = model.indexOf("/");
+  if (slashIndex > 0) {
+    const candidate = model.slice(slashIndex + 1);
+    if (EMBEDDING_DIMENSIONS[candidate]) {
+      return candidate;
+    }
+  }
+
+  return model;
+}
+
 // ============================================================================
 // Utility Functions
 // ============================================================================
@@ -381,7 +397,8 @@ export function getVectorDimensions(model: string, overrideDims?: number): numbe
     return overrideDims;
   }
 
-  const dims = EMBEDDING_DIMENSIONS[model];
+  const normalizedModel = normalizeEmbeddingModelKey(model);
+  const dims = EMBEDDING_DIMENSIONS[normalizedModel];
   if (!dims) {
     throw new Error(
       `Unsupported embedding model: ${model}. Either add it to EMBEDDING_DIMENSIONS or set embedding.dimensions in config.`
@@ -554,6 +571,27 @@ export class Embedder {
     );
   }
 
+  /** Check whether an error specifically indicates the input exceeded the model context limit. */
+  private isContextLengthError(error: unknown): boolean {
+    if (this.isRateLimitError(error)) {
+      return false;
+    }
+
+    const status = getErrorStatus(error);
+    const code = getErrorCode(error)?.toLowerCase();
+    const message = getErrorMessage(error).toLowerCase();
+
+    if (code === "context_length_exceeded") {
+      return true;
+    }
+
+    if (status && status >= 500) {
+      return false;
+    }
+
+    return /context length|context window|input length exceeds|maximum tokens|too many tokens|max(?:imum)? (?:input )?(?:token|tokens|context length)|token limit/.test(message);
+  }
+
   /** Number of API keys in the rotation pool. */
   get keyCount(): number {
     return this.clients.length;
@@ -693,7 +731,7 @@ export class Embedder {
     } catch (error) {
       // Check if this is a context length exceeded error and try chunking
       const errorMsg = error instanceof Error ? error.message : String(error);
-      const isContextError = /context|too long|exceed|length/i.test(errorMsg);
+      const isContextError = this.isContextLengthError(error);
 
       if (isContextError && this._autoChunk) {
         try {
@@ -822,8 +860,7 @@ export class Embedder {
       return results;
     } catch (error) {
       // Check if this is a context length exceeded error and try chunking each text
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      const isContextError = /context|too long|exceed|length/i.test(errorMsg);
+      const isContextError = this.isContextLengthError(error);
 
       if (isContextError && this._autoChunk) {
         try {
